@@ -259,7 +259,7 @@ def gerar_qr_parcela(parcela_id):
     parcela = Parcela.query.get_or_404(parcela_id)
     if parcela.usuario_id != current_user.id:
         return "Acesso negado", 403
-    chave_pix = "seuemail@exemplo.com"
+    chave_pix = "48204922841"
     texto_pix = gerar_payload_pix(chave_pix, parcela.valor)
     img = qrcode.make(texto_pix)
     buf = BytesIO()
@@ -274,7 +274,7 @@ def obter_payload_parcela(parcela_id):
     parcela = Parcela.query.get_or_404(parcela_id)
     if parcela.usuario_id != current_user.id:
         return "Acesso negado", 403
-    chave_pix = "seuemail@exemplo.com"
+    chave_pix = "48204922841"
     payload = gerar_payload_pix(chave_pix, parcela.valor)
     return payload, 200, {'Content-Type': 'text/plain'}
 
