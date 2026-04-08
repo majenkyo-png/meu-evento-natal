@@ -1,14 +1,30 @@
 {% extends "base.html" %}
 {% block content %}
 <h2>Cardápios por dia</h2>
-{% for data, refs in estrutura.items() %}
+{% for dia_id, dados in estrutura.items() %}
 <div class="card mb-3">
-    <div class="card-header bg-warning">{{ data.strftime('%d/%m') }}</div>
+    <div class="card-header bg-warning">
+        {{ dados.data.strftime('%d/%m') }}
+        {% if current_user.is_admin %}
+        <span class="float-end">
+            <a href="{{ url_for('editar_cardapio', dia_id=dia_id, nome_refeicao='cafe_manha') }}" class="btn btn-sm btn-outline-dark">Editar</a>
+        </span>
+        {% endif %}
+    </div>
     <div class="card-body">
-        <p><strong>☕ Café da manhã:</strong> {{ refs.cafe_manha }}</p>
-        <p><strong>🍽️ Almoço:</strong> {{ refs.almoco }}</p>
-        <p><strong>🍰 Café da tarde:</strong> {{ refs.cafe_tarde }}</p>
-        <p><strong>🌙 Jantar:</strong> {{ refs.jantar }}</p>
+        <p><strong>☕ Café da manhã:</strong> {{ dados.cafe_manha }}</p>
+        <p><strong>🍽️ Almoço:</strong> {{ dados.almoco }}</p>
+        <p><strong>🍰 Café da tarde:</strong> {{ dados.cafe_tarde }}</p>
+        <p><strong>🌙 Jantar:</strong> {{ dados.jantar }}</p>
+        {% if current_user.is_admin %}
+        <hr>
+        <small>
+            <a href="{{ url_for('editar_cardapio', dia_id=dia_id, nome_refeicao='cafe_manha') }}">Editar Café da manhã</a> |
+            <a href="{{ url_for('editar_cardapio', dia_id=dia_id, nome_refeicao='almoco') }}">Editar Almoço</a> |
+            <a href="{{ url_for('editar_cardapio', dia_id=dia_id, nome_refeicao='cafe_tarde') }}">Editar Café da tarde</a> |
+            <a href="{{ url_for('editar_cardapio', dia_id=dia_id, nome_refeicao='jantar') }}">Editar Jantar</a>
+        </small>
+        {% endif %}
     </div>
 </div>
 {% endfor %}

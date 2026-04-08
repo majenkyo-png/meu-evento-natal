@@ -6,7 +6,8 @@ from flask_login import LoginManager, login_user, logout_user, login_required, c
 import qrcode
 from io import BytesIO
 import requests
-import json
+import smtplib
+from email.message import EmailMessage
 
 from models import db, Usuario, DiaEvento, Refeicao, Movimentacao, ItemCompra, Parcela, Foto
 from forms import MovimentacaoForm, ItemCompraForm, RefeicaoForm, LoginForm, PagamentoForm, FotoForm
@@ -22,6 +23,30 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
 db.init_app(app)
+
+# --- Configuração de e-mail (altere para seus dados) ---
+EMAIL_NOTIFICACOES = True  # Coloque False se não quiser usar e-mail
+EMAIL_SMTP_SERVER = "smtp.gmail.com"
+EMAIL_SMTP_PORT = 465
+EMAIL_REMETENTE = "tokenrevise@gmail.com"       # Substitua pelo seu e-mail
+EMAIL_SENHA = "tayv xznr bfhd ewrc"    # Use senha de app do Gmail
+EMAIL_DESTINO = "majenkyo@gmail.com"         # E-mail que receberá notificações
+
+def enviar_email_notificacao(assunto, mensagem):
+    if not EMAIL_NOTIFICACOES:
+        return
+    try:
+        msg = EmailMessage()
+        msg['Subject'] = assunto
+        msg['From'] = EMAIL_REMETENTE
+        msg['To'] = EMAIL_DESTINO
+        msg.set_content(mensagem)
+        with smtplib.SMTP_SSL(EMAIL_SMTP_SERVER, EMAIL_SMTP_PORT) as smtp:
+            smtp.login(EMAIL_REMETENTE, EMAIL_SENHA)
+            smtp.send_message(msg)
+        print(f"E-mail enviado: {assunto}")
+    except Exception as e:
+        print(f"Falha ao enviar e-mail: {e}")
 
 # --- Flask-Login ---
 login_manager = LoginManager()
@@ -151,7 +176,8 @@ def cardapios():
     dias = DiaEvento.query.order_by(DiaEvento.data).all()
     estrutura = {}
     for dia in dias:
-        estrutura[dia.data] = {
+        estrutura[dia.id] = {
+            'data': dia.data,
             'cafe_manha': next((r.cardapio for r in dia.refeicoes if r.nome == 'cafe_manha'), ''),
             'almoco': next((r.cardapio for r in dia.refeicoes if r.nome == 'almoco'), ''),
             'cafe_tarde': next((r.cardapio for r in dia.refeicoes if r.nome == 'cafe_tarde'), ''),
@@ -207,6 +233,12 @@ def pagar_parcela(parcela_id):
         parcela.data_pagamento = date.today()
         parcela.observacao = form.observacao.data
         db.session.commit()
+        
+        # Enviar e-mail de notificação para o admin
+        assunto = f"Novo comprovante de pagamento PIX - Parcela {parcela.numero}"
+        mensagem = f"Olá! O usuário {parcela.usuario.nome} enviou comprovante da parcela {parcela.numero} (R$ {parcela.valor:.2f}).\nAcesse o admin para confirmar: https://meu-evento-natal-1.onrender.com/admin/parcelas"
+        enviar_email_notificacao(assunto, mensagem)
+        
         flash('Comprovante enviado! Aguarde confirmação do organizador.', 'success')
         return redirect(url_for('minhas_parcelas'))
     return render_template('pagar_parcela.html', form=form, parcela=parcela)
@@ -219,7 +251,7 @@ def gerar_qr_parcela(parcela_id):
     # Configure sua chave PIX aqui
     chave_pix = "seuemail@exemplo.com"
     valor = parcela.valor
-    # Payload PIX simplificado (funciona na maioria dos apps)
+    # Payload PIX simplificado
     texto_pix = f"00020126360014BR.GOV.BCB.PIX0114{chave_pix}5204000053039865404{int(valor*100)}5802BR5925Natal da Familia6009SAO PAULO62070503***6304"
     img = qrcode.make(texto_pix)
     buf = BytesIO()
@@ -228,8 +260,7 @@ def gerar_qr_parcela(parcela_id):
     return send_file(buf, mimetype='image/png')
 
 # --- Pagamento com Cartão (InfinitePay) ---
-# ⚠️ COLOQUE A SUA INFINITETAG AQUI (SUBSTITUA "SUA_INFINITE_TAG_AQUI")
-INFINITETAG = "victor-paula"
+INFINITETAG = "victor-paula"   # <--- SUBSTITUA PELA SUA INFINITETAG (sem $)
 
 @app.route('/pagar_parcela_cartao/<int:parcela_id>')
 @login_required
@@ -239,7 +270,6 @@ def pagar_parcela_cartao(parcela_id):
         flash('Acesso negado a esta parcela.', 'danger')
         return redirect(url_for('minhas_parcelas'))
 
-    # Monta o payload para a API da InfinitePay
     payload = {
         "handle": INFINITETAG,
         "redirect_url": url_for('pagamento_confirmado', _external=True),
@@ -248,10 +278,18 @@ def pagar_parcela_cartao(parcela_id):
         "items": [
             {
                 "quantity": 1,
-                "price": int(parcela.valor * 100),  # valor em centavos
+                "price": int(parcela.valor * 100),
                 "description": f"Parcela {parcela.numero} - Natal da Família"
             }
-        ]
+        ],
+        "shipping": {  # campo obrigatório
+            "name": "Cliente",
+            "address": "Endereço do Evento",
+            "city": "Sua Cidade",
+            "state": "SP",
+            "zip_code": "00000-000",
+            "country": "BR"
+        }
     }
 
     try:
@@ -269,6 +307,8 @@ def pagar_parcela_cartao(parcela_id):
             flash('Erro ao criar link de pagamento: resposta inválida.', 'danger')
     except requests.exceptions.RequestException as e:
         print(f"Erro na API InfinitePay: {e}")
+        if e.response is not None:
+            print(f"Detalhes: {e.response.text}")
         flash('Não foi possível conectar ao serviço de pagamento. Tente novamente.', 'danger')
     return redirect(url_for('minhas_parcelas'))
 
@@ -293,7 +333,6 @@ def webhook_infinitepay():
         if parcela and parcela.status != 'confirmado':
             parcela.status = 'confirmado'
             parcela.data_pagamento = date.today()
-            # Adiciona movimentação no caixa
             mov = Movimentacao(
                 descricao=f'Pagamento cartão - Parcela {parcela.numero} - {parcela.usuario.nome}',
                 valor=parcela.valor,
@@ -303,6 +342,12 @@ def webhook_infinitepay():
             )
             db.session.add(mov)
             db.session.commit()
+            
+            # Notificação por e-mail
+            assunto = f"Pagamento confirmado (cartão) - Parcela {parcela.numero}"
+            mensagem = f"O pagamento via cartão da parcela {parcela.numero} (R$ {parcela.valor:.2f}) foi confirmado. O valor já foi adicionado ao caixa."
+            enviar_email_notificacao(assunto, mensagem)
+            
             print(f"Pagamento confirmado para parcela {parcela.id}")
             return {"success": True, "message": "Pagamento confirmado"}, 200
         else:
@@ -348,6 +393,12 @@ def confirmar_parcela(id):
         )
         db.session.add(mov)
         db.session.commit()
+        
+        # Notificação por e-mail
+        assunto = f"Pagamento confirmado (admin) - Parcela {parcela.numero}"
+        mensagem = f"Você confirmou manualmente o pagamento da parcela {parcela.numero} de {parcela.usuario.nome} (R$ {parcela.valor:.2f})."
+        enviar_email_notificacao(assunto, mensagem)
+        
         flash('Pagamento confirmado e lançado no caixa!', 'success')
     else:
         flash('Esta parcela já estava confirmada.', 'info')
