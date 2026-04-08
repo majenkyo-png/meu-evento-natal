@@ -19,7 +19,8 @@
          </td>
         <td>
             {% if p.status == 'pendente' %}
-                <a href="{{ url_for('pagar_parcela', parcela_id=p.id) }}" class="btn btn-sm btn-success">Pagar</a>
+                <a href="{{ url_for('pagar_parcela', parcela_id=p.id) }}" class="btn btn-sm btn-success">Pagar com PIX</a>
+                <a href="{{ url_for('pagar_parcela_cartao', parcela_id=p.id) }}" class="btn btn-sm btn-primary">Pagar com Cartão</a>
             {% endif %}
          </td>
     </tr>

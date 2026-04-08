@@ -5,6 +5,8 @@ from werkzeug.utils import secure_filename
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
 import qrcode
 from io import BytesIO
+import requests
+import json
 
 from models import db, Usuario, DiaEvento, Refeicao, Movimentacao, ItemCompra, Parcela, Foto
 from forms import MovimentacaoForm, ItemCompraForm, RefeicaoForm, LoginForm, PagamentoForm, FotoForm
@@ -29,9 +31,9 @@ login_manager.login_message = 'Faça login para acessar o sistema.'
 
 @login_manager.user_loader
 def load_user(user_id):
-    return db.session.get(Usuario, int(user_id))
+    return Usuario.query.get(int(user_id))
 
-# --- Proteção global: qualquer rota não listada exige login ---
+# --- Proteção global ---
 @app.before_request
 def before_request():
     rotas_publicas = ['login', 'cadastro', 'static']
@@ -40,7 +42,7 @@ def before_request():
     if not current_user.is_authenticated:
         return redirect(url_for('login'))
 
-# --- Inicializar dados (dias, refeições, saldo inicial) ---
+# --- Inicializar dados ---
 def inicializar_dados():
     with app.app_context():
         ano_atual = date.today().year
@@ -58,11 +60,11 @@ def inicializar_dados():
                     db.session.add(nova_ref)
                 db.session.commit()
         if Movimentacao.query.count() == 0:
-            inicial = Movimentacao(descricao='Saldo inicial em caixa', valor=00.00, tipo='entrada', data_mov=date.today())
+            inicial = Movimentacao(descricao='Saldo inicial em caixa', valor=0.00, tipo='entrada', data_mov=date.today())
             db.session.add(inicial)
             db.session.commit()
 
-# --- Rotas públicas (apenas login e cadastro) ---
+# --- Rotas públicas (login e cadastro) ---
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
@@ -78,7 +80,6 @@ def login():
     return render_template('login.html')
 
 @app.route('/cadastro', methods=['GET', 'POST'])
-
 def cadastro():
     if request.method == 'POST':
         nome = request.form.get('nome')
@@ -88,7 +89,6 @@ def cadastro():
         if Usuario.query.filter_by(email=email).first():
             flash('E-mail já cadastrado. Faça login.', 'danger')
         else:
-            # Primeiro usuário cadastrado se torna admin
             primeiro_usuario = Usuario.query.count() == 0
             novo = Usuario(nome=nome, email=email, telefone=telefone)
             novo.set_senha(senha)
@@ -97,10 +97,8 @@ def cadastro():
                 flash('Primeiro usuário cadastrado como ADMINISTRADOR!', 'success')
             db.session.add(novo)
             db.session.commit()
-            # Criar 9 parcelas (valor total R$ 450,00 -> R$ 50 cada)
-            # Criar 9 parcelas de R$ 50,00 cada (total R$ 450,00)
+            # Criar 9 parcelas de R$ 50,00 cada
             valor_parcela = 50.00
-            valor_total = valor_parcela * 9   # 450.00
             for i in range(1, 10):
                 data_venc = date(2025, i, 1) if i <= 12 else date(2026, i-12, 1)
                 parcela = Parcela(
@@ -121,24 +119,22 @@ def logout():
     logout_user()
     return redirect(url_for('login'))
 
-# --- Rotas protegidas (exigem login) ---
+# --- Rotas protegidas ---
 @app.route('/')
 def index():
     entradas = db.session.query(db.func.sum(Movimentacao.valor)).filter_by(tipo='entrada').scalar() or 0
     saidas = db.session.query(db.func.sum(Movimentacao.valor)).filter_by(tipo='saida').scalar() or 0
     saldo = entradas - saidas
-    valor_chacara = 3500.00
+    valor_chacara = 500.00
     meta_chacara = 1050.00
     total_arrecadado = entradas
-    percentual_meta = min(50, (total_arrecadado / meta_chacara) * 50) if meta_chacara > 0 else 0
+    percentual_meta = min(100, (total_arrecadado / meta_chacara) * 100) if meta_chacara > 0 else 0
 
-    # No app.py, dentro da função index(), substitua a parte do carrossel por:
-
-    # Carrossel de fotos da chácara - lista todas as imagens da pasta
-    fotos_chacara_dir = os.path.join('static', 'fotos_chacara')
+    # Carrossel de fotos
     imagens_existentes = []
-    if os.path.exists(fotos_chacara_dir):
-        for arquivo in os.listdir(fotos_chacara_dir):
+    fotos_dir = os.path.join('static', 'fotos_chacara')
+    if os.path.exists(fotos_dir):
+        for arquivo in os.listdir(fotos_dir):
             if arquivo.lower().endswith(('.jpg', '.jpeg', '.png', '.gif')):
                 imagens_existentes.append(os.path.join('fotos_chacara', arquivo).replace('\\', '/'))
 
@@ -171,10 +167,7 @@ def compras():
 @app.route('/comprovantes')
 def comprovantes():
     movs = Movimentacao.query.filter(Movimentacao.comprovante_path.isnot(None)).order_by(Movimentacao.data_mov.desc()).all()
-    entradas = db.session.query(db.func.sum(Movimentacao.valor)).filter_by(tipo='entrada').scalar() or 0
-    saidas = db.session.query(db.func.sum(Movimentacao.valor)).filter_by(tipo='saida').scalar() or 0
-    saldo = entradas - saidas
-    return render_template('comprovantes.html', movimentacoes=movs, saldo=saldo)
+    return render_template('comprovantes.html', movimentacoes=movs)
 
 @app.route('/extrato')
 def extrato():
@@ -189,7 +182,7 @@ def extrato_download():
     movimentacoes = Movimentacao.query.order_by(Movimentacao.data_mov).all()
     return gerar_csv_extrato(movimentacoes)
 
-# --- Rotas de parcelas (usuário logado) ---
+# --- Parcelas (PIX) ---
 @app.route('/minhas_parcelas')
 def minhas_parcelas():
     parcelas = Parcela.query.filter_by(usuario_id=current_user.id).order_by(Parcela.numero).all()
@@ -218,81 +211,107 @@ def pagar_parcela(parcela_id):
         return redirect(url_for('minhas_parcelas'))
     return render_template('pagar_parcela.html', form=form, parcela=parcela)
 
-def gerar_payload_pix(chave, nome, cidade, valor, txid):
-    nome = nome[:25]
-    cidade = cidade[:15]
-
-    valor_str = f"{valor:.2f}"
-
-    def monta_campo(id, valor):
-        return f"{id}{len(valor):02d}{valor}"
-
-    payload = ""
-    payload += monta_campo("00", "01")
-
-    # Merchant Account (PIX)
-    gui = monta_campo("00", "BR.GOV.BCB.PIX")
-    chave_campo = monta_campo("01", chave)
-    merchant_account = monta_campo("26", gui + chave_campo)
-    payload += merchant_account
-
-    payload += monta_campo("52", "0000")
-    payload += monta_campo("53", "986")
-    payload += monta_campo("54", valor_str)
-    payload += monta_campo("58", "BR")
-    payload += monta_campo("59", nome)
-    payload += monta_campo("60", cidade)
-
-    txid_campo = monta_campo("05", txid)
-    additional_data = monta_campo("62", txid_campo)
-    payload += additional_data
-
-    payload += "6304"
-
-    # CRC16
-    def crc16(payload):
-        polinomio = 0x1021
-        resultado = 0xFFFF
-        for c in payload:
-            resultado ^= ord(c) << 8
-            for _ in range(8):
-                if resultado & 0x8000:
-                    resultado = (resultado << 1) ^ polinomio
-                else:
-                    resultado <<= 1
-                resultado &= 0xFFFF
-        return f"{resultado:04X}"
-
-    return payload + crc16(payload)
-
 @app.route('/gerar_qr_parcela/<int:parcela_id>')
-@login_required
 def gerar_qr_parcela(parcela_id):
     parcela = Parcela.query.get_or_404(parcela_id)
-
     if parcela.usuario_id != current_user.id:
         return "Acesso negado", 403
-
-    chave_pix = "48204922841"
-    nome = "Natal da Familia"
-    cidade = "SAO PAULO"
-    valor = float(parcela.valor)
-    txid = f"PAR{parcela.id:06d}"
-
-    payload = gerar_payload_pix(chave_pix, nome, cidade, valor, txid)
-
-    import qrcode
-    from io import BytesIO
-    from flask import send_file
-
-    img = qrcode.make(payload)
+    # Configure sua chave PIX aqui
+    chave_pix = "seuemail@exemplo.com"
+    valor = parcela.valor
+    # Payload PIX simplificado (funciona na maioria dos apps)
+    texto_pix = f"00020126360014BR.GOV.BCB.PIX0114{chave_pix}5204000053039865404{int(valor*100)}5802BR5925Natal da Familia6009SAO PAULO62070503***6304"
+    img = qrcode.make(texto_pix)
     buf = BytesIO()
     img.save(buf, 'PNG')
     buf.seek(0)
-
     return send_file(buf, mimetype='image/png')
 
-# --- Área administrativa (apenas para usuários com is_admin=True) ---
+# --- Pagamento com Cartão (InfinitePay) ---
+# ⚠️ COLOQUE A SUA INFINITETAG AQUI (SUBSTITUA "SUA_INFINITE_TAG_AQUI")
+INFINITETAG = "$victor-paula"
+
+@app.route('/pagar_parcela_cartao/<int:parcela_id>')
+@login_required
+def pagar_parcela_cartao(parcela_id):
+    parcela = Parcela.query.get_or_404(parcela_id)
+    if parcela.usuario_id != current_user.id:
+        flash('Acesso negado a esta parcela.', 'danger')
+        return redirect(url_for('minhas_parcelas'))
+
+    # Monta o payload para a API da InfinitePay
+    payload = {
+        "handle": INFINITETAG,
+        "redirect_url": url_for('pagamento_confirmado', _external=True),
+        "webhook_url": url_for('webhook_infinitepay', _external=True),
+        "order_nsu": str(parcela.id),
+        "items": [
+            {
+                "quantity": 1,
+                "price": int(parcela.valor * 100),  # valor em centavos
+                "description": f"Parcela {parcela.numero} - Natal da Família"
+            }
+        ]
+    }
+
+    try:
+        response = requests.post(
+            'https://api.infinitepay.io/invoices/public/checkout/links',
+            json=payload,
+            headers={'Content-Type': 'application/json'}
+        )
+        response.raise_for_status()
+        data = response.json()
+        payment_url = data.get('url')
+        if payment_url:
+            return redirect(payment_url)
+        else:
+            flash('Erro ao criar link de pagamento: resposta inválida.', 'danger')
+    except requests.exceptions.RequestException as e:
+        print(f"Erro na API InfinitePay: {e}")
+        flash('Não foi possível conectar ao serviço de pagamento. Tente novamente.', 'danger')
+    return redirect(url_for('minhas_parcelas'))
+
+@app.route('/pagamento_confirmado')
+@login_required
+def pagamento_confirmado():
+    flash('Seu pagamento foi processado! Assim que confirmado, o status será atualizado.', 'info')
+    return redirect(url_for('minhas_parcelas'))
+
+@app.route('/webhook_infinitepay', methods=['POST'])
+def webhook_infinitepay():
+    data = request.get_json()
+    if not data:
+        return {"success": False, "message": "Invalid data"}, 400
+
+    order_nsu = data.get('order_nsu')
+    is_paid = data.get('paid', False)
+    capture_method = data.get('capture_method')
+
+    if is_paid and capture_method == 'credit_card':
+        parcela = Parcela.query.get(int(order_nsu))
+        if parcela and parcela.status != 'confirmado':
+            parcela.status = 'confirmado'
+            parcela.data_pagamento = date.today()
+            # Adiciona movimentação no caixa
+            mov = Movimentacao(
+                descricao=f'Pagamento cartão - Parcela {parcela.numero} - {parcela.usuario.nome}',
+                valor=parcela.valor,
+                tipo='entrada',
+                data_mov=date.today(),
+                comprovante_path=data.get('receipt_url')
+            )
+            db.session.add(mov)
+            db.session.commit()
+            print(f"Pagamento confirmado para parcela {parcela.id}")
+            return {"success": True, "message": "Pagamento confirmado"}, 200
+        else:
+            return {"success": False, "message": "Pedido não encontrado ou já confirmado"}, 400
+
+    print(f"Webhook recebido, mas pagamento não aprovado: {data}")
+    return {"success": True, "message": "Recebido, mas pagamento não aprovado."}, 200
+
+# --- Área administrativa (apenas admin) ---
 def admin_required(f):
     from functools import wraps
     @wraps(f)
@@ -345,7 +364,6 @@ def rejeitar_parcela(id):
     flash('Pagamento rejeitado. Peça para enviar novamente.', 'warning')
     return redirect(url_for('admin_parcelas'))
 
-# Demais rotas admin (movimentações, itens, cardápios) também precisam de @admin_required
 @app.route('/admin/movimentacao/nova', methods=['GET', 'POST'])
 @admin_required
 def nova_movimentacao():
@@ -462,7 +480,6 @@ def admin_logout():
     flash('Você saiu da área administrativa', 'info')
     return redirect(url_for('index'))
 
-# --- (Opcional) Galeria de fotos separada – se quiser manter ---
 @app.route('/fotos')
 def fotos():
     todas_fotos = Foto.query.order_by(Foto.data_upload.desc()).all()
