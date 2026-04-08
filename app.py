@@ -229,7 +229,7 @@ def pagar_parcela(parcela_id):
     
     form = PagamentoForm()
     # Gerar payload PIX para exibir na página
-    chave_pix = "seuemail@exemplo.com"  # SUBSTITUA PELA SUA CHAVE PIX
+    chave_pix = "48204922841"  # SUBSTITUA PELA SUA CHAVE PIX
     payload = gerar_payload_pix(chave_pix, parcela.valor)
     
     if form.validate_on_submit():
