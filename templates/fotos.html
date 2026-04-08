@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>📸 Galeria do Evento</h2>
+<div class="row">
+    {% for foto in fotos %}
+    <div class="col-md-4 mb-3">
+        <div class="card">
+            <img src="{{ url_for('static', filename=foto.imagem_path) }}" class="card-img-top" style="height: 200px; object-fit: cover;">
+            <div class="card-body">
+                <h5 class="card-title">{{ foto.titulo or 'Sem título' }}</h5>
+                <p class="card-text">{{ foto.descricao or '' }}</p>
+                <small>{{ foto.data_upload.strftime('%d/%m/%Y') }}</small>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <p>Nenhuma foto enviada ainda.</p>
+    {% endfor %}
+</div>
+{% endblock %}

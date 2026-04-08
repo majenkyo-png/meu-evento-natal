@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Olá, {{ current_user.nome }}!</h2>
+<h3>Suas parcelas (9x)</h3>
+<table class="table table-bordered">
+    <thead>
+        <tr><th>Parcela</th><th>Valor</th><th>Vencimento</th><th>Status</th><th>Ação</th></tr>
+    </thead>
+    <tbody>
+    {% for p in parcelas %}
+    <tr class="{% if p.status == 'confirmado' %}table-success{% elif p.status == 'pago' %}table-warning{% endif %}">
+        <td>{{ p.numero }}/9</td>
+        <td>R$ {{ "%.2f"|format(p.valor) }}</td>
+        <td>{{ p.data_vencimento.strftime('%d/%m/%Y') }}</td>
+        <td>
+            {% if p.status == 'confirmado' %}✅ Pago e confirmado
+            {% elif p.status == 'pago' %}⏳ Aguardando confirmação
+            {% else %}🔴 Pendente{% endif %}
+         </td>
+        <td>
+            {% if p.status == 'pendente' %}
+                <a href="{{ url_for('pagar_parcela', parcela_id=p.id) }}" class="btn btn-sm btn-success">Pagar</a>
+            {% endif %}
+         </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

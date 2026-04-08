@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Pagamento da parcela {{ parcela.numero }}/9</h2>
+<p><strong>Valor:</strong> R$ {{ "%.2f"|format(parcela.valor) }}</p>
+<p><strong>Vencimento:</strong> {{ parcela.data_vencimento.strftime('%d/%m/%Y') }}</p>
+<hr>
+<h5>QR Code PIX</h5>
+<img src="{{ url_for('gerar_qr_parcela', parcela_id=parcela.id) }}" alt="QR Code PIX" class="img-fluid mb-3" style="max-width: 250px;">
+<p>Escaneie o QR Code acima no app do seu banco para pagar <strong>R$ {{ "%.2f"|format(parcela.valor) }}</strong></p>
+<hr>
+<h5>Após o pagamento, envie o comprovante</h5>
+<form method="POST" enctype="multipart/form-data">
+    {{ form.hidden_tag() }}
+    <div class="mb-3">{{ form.comprovante.label }} {{ form.comprovante(class="form-control") }}</div>
+    <div class="mb-3">{{ form.observacao.label }} {{ form.observacao(class="form-control", rows=2) }}</div>
+    <button type="submit" class="btn btn-primary">Enviar comprovante</button>
+</form>
+{% endblock %}

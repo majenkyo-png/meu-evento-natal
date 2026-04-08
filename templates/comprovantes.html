@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>📎 Comprovantes de despesas</h2>
+<div class="row">
+    {% for mov in movimentacoes %}
+    <div class="col-md-4 mb-3">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">{{ mov.descricao }}</h5>
+                <p>Data: {{ mov.data_mov.strftime('%d/%m/%Y') }} | Valor: R$ {{ "%.2f"|format(mov.valor) }}</p>
+                {% if mov.comprovante_path %}
+                    <a href="{{ url_for('static', filename=mov.comprovante_path) }}" target="_blank" class="btn btn-sm btn-primary">Ver comprovante</a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <p>Nenhum comprovante enviado ainda.</p>
+    {% endfor %}
+</div>
+{% endblock %}

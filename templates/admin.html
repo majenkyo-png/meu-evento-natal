@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Painel Administrativo</h2>
+<div class="row">
+    <div class="col-md-6">
+        <div class="card"><div class="card-body">
+            <h5>💰 Movimentações</h5>
+            <a href="{{ url_for('nova_movimentacao') }}" class="btn btn-primary">➕ Nova movimentação</a>
+            <a href="{{ url_for('extrato') }}" class="btn btn-secondary">Ver extrato</a>
+        </div></div>
+    </div>
+    <div class="col-md-6">
+        <div class="card"><div class="card-body">
+            <h5>🍽️ Editar cardápios</h5>
+            <a href="{{ url_for('cardapios') }}" class="btn btn-warning">Ir para cardápios</a> (clique no texto para editar)
+        </div></div>
+    </div>
+    <div class="col-md-6 mt-3">
+        <div class="card"><div class="card-body">
+            <h5>🛒 Lista de compras</h5>
+            <a href="{{ url_for('novo_item_compra') }}" class="btn btn-success">➕ Adicionar item</a>
+            <a href="{{ url_for('compras') }}" class="btn btn-info">Ver lista</a>
+        </div></div>
+    </div>
+    <div class="col-md-6 mt-3">
+        <div class="card"><div class="card-body">
+            <h5>📸 Galeria de fotos</h5>
+            <a href="{{ url_for('nova_foto') }}" class="btn btn-secondary">➕ Nova foto</a>
+            <a href="{{ url_for('fotos') }}" class="btn btn-info">Ver galeria</a>
+        </div></div>
+    </div>
+    <div class="col-md-6 mt-3">
+        <div class="card"><div class="card-body">
+            <h5>📦 Parcelas</h5>
+            <a href="{{ url_for('admin_parcelas') }}" class="btn btn-info">Gerenciar pagamentos</a>
+        </div></div>
+    </div>
+</div>
+{% endblock %}

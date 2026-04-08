@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Extrato detalhado</h2>
+<p><strong>Total entradas:</strong> R$ {{ "%.2f"|format(entradas) }} | <strong>Total saídas:</strong> R$ {{ "%.2f"|format(saidas) }} | <strong>Saldo:</strong> R$ {{ "%.2f"|format(saldo) }}</p>
+<a href="{{ url_for('extrato_download') }}" class="btn btn-success mb-3">⬇️ Baixar extrato em CSV</a>
+<table class="table table-striped">
+    <thead>
+        <tr><th>Data</th><th>Descrição</th><th>Valor</th><th>Tipo</th><th>Comprovante</th></tr>
+    </thead>
+    <tbody>
+    {% for m in movimentacoes %}
+    <tr>
+        <td>{{ m.data_mov.strftime('%d/%m/%Y') }}</td>
+        <td>{{ m.descricao }}</td>
+        <td>R$ {{ "%.2f"|format(m.valor) }}</td>
+        <td>{{ "Entrada" if m.tipo == "entrada" else "Saída" }}</td>
+        <td>{% if m.comprovante_path %}<a href="{{ url_for('static', filename=m.comprovante_path) }}" target="_blank">Ver</a>{% endif %}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Gerenciar Pagamentos</h2>
+<table class="table table-striped">
+    <thead>
+        <tr><th>Usuário</th><th>Parcela</th><th>Valor</th><th>Status</th><th>Comprovante</th><th>Ações</th></tr>
+    </thead>
+    <tbody>
+    {% for p in parcelas %}
+    <tr>
+        <td>{{ p.usuario.nome }} ({{ p.usuario.email }})</td>
+        <td>{{ p.numero }}/9</td>
+        <td>R$ {{ "%.2f"|format(p.valor) }}</td>
+        <td>{{ p.status }}</td>
+        <td>{% if p.comprovante_path %}<a href="{{ url_for('static', filename=p.comprovante_path) }}" target="_blank">Ver</a>{% endif %}</td>
+        <td>
+            {% if p.status == 'pago' %}
+                <a href="{{ url_for('confirmar_parcela', id=p.id) }}" class="btn btn-sm btn-success">Confirmar</a>
+                <a href="{{ url_for('rejeitar_parcela', id=p.id) }}" class="btn btn-sm btn-danger">Rejeitar</a>
+            {% else %}
+                <span class="text-muted">Aguardando pagamento</span>
+            {% endif %}
+         </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

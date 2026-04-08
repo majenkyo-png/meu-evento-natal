@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Cardápios por dia</h2>
+{% for data, refs in estrutura.items() %}
+<div class="card mb-3">
+    <div class="card-header bg-warning">{{ data.strftime('%d/%m') }}</div>
+    <div class="card-body">
+        <p><strong>☕ Café da manhã:</strong> {{ refs.cafe_manha }}</p>
+        <p><strong>🍽️ Almoço:</strong> {{ refs.almoco }}</p>
+        <p><strong>🍰 Café da tarde:</strong> {{ refs.cafe_tarde }}</p>
+        <p><strong>🌙 Jantar:</strong> {{ refs.jantar }}</p>
+    </div>
+</div>
+{% endfor %}
+{% endblock %}

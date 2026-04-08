@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>{{ titulo }}</h2>
+<form method="POST">
+    {{ form.hidden_tag() }}
+    <div class="mb-3">{{ form.nome.label }} {{ form.nome(class="form-control") }}</div>
+    <div class="mb-3">{{ form.quantidade.label }} {{ form.quantidade(class="form-control") }}</div>
+    <div class="mb-3">{{ form.categoria.label }} {{ form.categoria(class="form-control") }}</div>
+    <div class="mb-3 form-check">{{ form.comprado() }} {{ form.comprado.label }}</div>
+    <button type="submit" class="btn btn-primary">Salvar</button>
+</form>
+{% endblock %}

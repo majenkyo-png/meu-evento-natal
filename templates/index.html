@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block content %}
+{% if imagens %}
+<div id="carrosselChacara" class="carousel slide mb-4" data-bs-ride="carousel" data-bs-interval="10000">
+    <div class="carousel-inner">
+        {% for img in imagens %}
+        <div class="carousel-item {% if loop.first %}active{% endif %}">
+            <img src="{{ url_for('static', filename=img) }}" class="d-block w-100" style="height: 400px; object-fit: cover;" alt="Chácara">
+        </div>
+        {% endfor %}
+    </div>
+    <button class="carousel-control-prev" type="button" data-bs-target="#carrosselChacara" data-bs-slide="prev">
+        <span class="carousel-control-prev-icon"></span>
+    </button>
+    <button class="carousel-control-next" type="button" data-bs-target="#carrosselChacara" data-bs-slide="next">
+        <span class="carousel-control-next-icon"></span>
+    </button>
+</div>
+{% endif %}
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="card text-white bg-success mb-3">
+            <div class="card-header">💰 Caixa atual</div>
+            <div class="card-body">
+                <h2 class="card-title">R$ {{ "%.2f"|format(saldo) }}</h2>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card text-white bg-info mb-3">
+            <div class="card-header">🏡 Valores da Chácara (estimado)</div>
+            <div class="card-body">
+                <h2 class="card-title">R$ {{ "%.2f"|format(valor_chacara) }}</h2>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header bg-warning">🎯 Meta para entrada da chácara (30% de R$ 3500)</div>
+    <div class="card-body">
+        <div class="progress mb-2">
+            <div class="progress-bar bg-success" role="progressbar" style="width: {{ percentual_meta }}%;" 
+                 aria-valuenow="{{ percentual_meta }}" aria-valuemin="0" aria-valuemax="100">
+                {{ "%.1f"|format(percentual_meta) }}%
+            </div>
+        </div>
+        <p><strong>Arrecadado:</strong> R$ {{ "%.2f"|format(total_arrecadado) }} / R$ {{ "%.2f"|format(meta_chacara) }}</p>
+        <p>Faltam: R$ {{ "%.2f"|format(meta_chacara - total_arrecadado if total_arrecadado < meta_chacara else 0) }}</p>
+    </div>
+</div>
+
+<div class="alert alert-secondary">
+    <strong>📅 Dias do evento:</strong> 24, 25, 26 e 27 de dezembro – Café da manhã, Almoço, Café da tarde e Jantar.
+</div>
+{% endblock %}

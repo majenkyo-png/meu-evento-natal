@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Lista de compras</h2>
+<table class="table table-bordered">
+    <thead><tr><th>Item</th><th>Quantidade</th><th>Categoria</th><th>Status</th></tr></thead>
+    <tbody>
+    {% for item in itens %}
+    <tr class="{% if item.comprado %}table-success{% endif %}">
+        <td>{{ item.nome }}</td><td>{{ item.quantidade or '-' }}</td><td>{{ item.categoria or '-' }}</td>
+        <td>{% if item.comprado %}✅ Comprado{% else %}⏳ Pendente{% endif %}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>
+{% endblock %}
