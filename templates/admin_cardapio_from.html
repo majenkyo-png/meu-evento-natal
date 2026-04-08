@@ -1,9 +1,0 @@
-{% extends "base.html" %}
-{% block content %}
-<h2>Editar cardápio - {{ refeicao.nome.replace('_',' ') }} ({{ refeicao.dia.data.strftime('%d/%m') }})</h2>
-<form method="POST">
-    {{ form.hidden_tag() }}
-    <div class="mb-3">{{ form.cardapio.label }} {{ form.cardapio(class="form-control", rows=4) }}</div>
-    <button type="submit" class="btn btn-primary">Salvar</button>
-</form>
-{% endblock %}
