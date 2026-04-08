@@ -229,7 +229,7 @@ def gerar_qr_parcela(parcela_id):
 
 # --- Pagamento com Cartão (InfinitePay) ---
 # ⚠️ COLOQUE A SUA INFINITETAG AQUI (SUBSTITUA "SUA_INFINITE_TAG_AQUI")
-INFINITETAG = "$victor-paula"
+INFINITETAG = "victor-paula"
 
 @app.route('/pagar_parcela_cartao/<int:parcela_id>')
 @login_required
