@@ -25,12 +25,12 @@ os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 db.init_app(app)
 
 # --- Configuração de e-mail (altere para seus dados) ---
-EMAIL_NOTIFICACOES = True  # Coloque False se não quiser usar e-mail
+EMAIL_NOTIFICACOES = True
 EMAIL_SMTP_SERVER = "smtp.gmail.com"
 EMAIL_SMTP_PORT = 465
-EMAIL_REMETENTE = "tokenrevise@gmail.com"       # Substitua pelo seu e-mail
-EMAIL_SENHA = "tayv xznr bfhd ewrc"    # Use senha de app do Gmail
-EMAIL_DESTINO = "majenkyo@gmail.com"         # E-mail que receberá notificações
+EMAIL_REMETENTE = "tokenrevise@gmail.com"
+EMAIL_SENHA = "tayv xznr bfhd ewrc"
+EMAIL_DESTINO = "majenkyo@gmail.com"
 
 def enviar_email_notificacao(assunto, mensagem):
     if not EMAIL_NOTIFICACOES:
@@ -214,13 +214,24 @@ def minhas_parcelas():
     parcelas = Parcela.query.filter_by(usuario_id=current_user.id).order_by(Parcela.numero).all()
     return render_template('minhas_parcelas.html', parcelas=parcelas)
 
+# Função auxiliar para gerar o payload PIX (código copia e cola)
+def gerar_payload_pix(chave_pix, valor, nome="Natal da Familia", cidade="SAO PAULO"):
+    # Payload simplificado (funciona na maioria dos apps)
+    payload = f"00020126360014BR.GOV.BCB.PIX0114{chave_pix}5204000053039865404{int(valor*100)}5802BR5925{nome}6009{cidade}62070503***6304"
+    return payload
+
 @app.route('/pagar_parcela/<int:parcela_id>', methods=['GET', 'POST'])
 def pagar_parcela(parcela_id):
     parcela = Parcela.query.get_or_404(parcela_id)
     if parcela.usuario_id != current_user.id:
         flash('Acesso negado a esta parcela.', 'danger')
         return redirect(url_for('minhas_parcelas'))
+    
     form = PagamentoForm()
+    # Gerar payload PIX para exibir na página
+    chave_pix = "seuemail@exemplo.com"  # SUBSTITUA PELA SUA CHAVE PIX
+    payload = gerar_payload_pix(chave_pix, parcela.valor)
+    
     if form.validate_on_submit():
         if form.comprovante.data:
             f = form.comprovante.data
@@ -234,33 +245,41 @@ def pagar_parcela(parcela_id):
         parcela.observacao = form.observacao.data
         db.session.commit()
         
-        # Enviar e-mail de notificação para o admin
         assunto = f"Novo comprovante de pagamento PIX - Parcela {parcela.numero}"
         mensagem = f"Olá! O usuário {parcela.usuario.nome} enviou comprovante da parcela {parcela.numero} (R$ {parcela.valor:.2f}).\nAcesse o admin para confirmar: https://meu-evento-natal-1.onrender.com/admin/parcelas"
         enviar_email_notificacao(assunto, mensagem)
         
         flash('Comprovante enviado! Aguarde confirmação do organizador.', 'success')
         return redirect(url_for('minhas_parcelas'))
-    return render_template('pagar_parcela.html', form=form, parcela=parcela)
+    
+    return render_template('pagar_parcela.html', form=form, parcela=parcela, payload=payload)
 
 @app.route('/gerar_qr_parcela/<int:parcela_id>')
 def gerar_qr_parcela(parcela_id):
     parcela = Parcela.query.get_or_404(parcela_id)
     if parcela.usuario_id != current_user.id:
         return "Acesso negado", 403
-    # Configure sua chave PIX aqui
     chave_pix = "seuemail@exemplo.com"
-    valor = parcela.valor
-    # Payload PIX simplificado
-    texto_pix = f"00020126360014BR.GOV.BCB.PIX0114{chave_pix}5204000053039865404{int(valor*100)}5802BR5925Natal da Familia6009SAO PAULO62070503***6304"
+    texto_pix = gerar_payload_pix(chave_pix, parcela.valor)
     img = qrcode.make(texto_pix)
     buf = BytesIO()
     img.save(buf, 'PNG')
     buf.seek(0)
     return send_file(buf, mimetype='image/png')
 
+# Rota adicional para retornar apenas o payload PIX (copia e cola)
+@app.route('/obter_payload_parcela/<int:parcela_id>')
+@login_required
+def obter_payload_parcela(parcela_id):
+    parcela = Parcela.query.get_or_404(parcela_id)
+    if parcela.usuario_id != current_user.id:
+        return "Acesso negado", 403
+    chave_pix = "seuemail@exemplo.com"
+    payload = gerar_payload_pix(chave_pix, parcela.valor)
+    return payload, 200, {'Content-Type': 'text/plain'}
+
 # --- Pagamento com Cartão (InfinitePay) ---
-INFINITETAG = "victor-paula"   # <--- SUBSTITUA PELA SUA INFINITETAG (sem $)
+INFINITETAG = "victor-paula"
 
 @app.route('/pagar_parcela_cartao/<int:parcela_id>')
 @login_required
@@ -282,7 +301,7 @@ def pagar_parcela_cartao(parcela_id):
                 "description": f"Parcela {parcela.numero} - Natal da Família"
             }
         ],
-        "shipping": {  # campo obrigatório
+        "shipping": {
             "name": "Cliente",
             "address": "Endereço do Evento",
             "city": "Sua Cidade",
@@ -342,18 +361,13 @@ def webhook_infinitepay():
             )
             db.session.add(mov)
             db.session.commit()
-            
-            # Notificação por e-mail
             assunto = f"Pagamento confirmado (cartão) - Parcela {parcela.numero}"
             mensagem = f"O pagamento via cartão da parcela {parcela.numero} (R$ {parcela.valor:.2f}) foi confirmado. O valor já foi adicionado ao caixa."
             enviar_email_notificacao(assunto, mensagem)
-            
-            print(f"Pagamento confirmado para parcela {parcela.id}")
             return {"success": True, "message": "Pagamento confirmado"}, 200
         else:
             return {"success": False, "message": "Pedido não encontrado ou já confirmado"}, 400
 
-    print(f"Webhook recebido, mas pagamento não aprovado: {data}")
     return {"success": True, "message": "Recebido, mas pagamento não aprovado."}, 200
 
 # --- Área administrativa (apenas admin) ---
@@ -393,12 +407,9 @@ def confirmar_parcela(id):
         )
         db.session.add(mov)
         db.session.commit()
-        
-        # Notificação por e-mail
         assunto = f"Pagamento confirmado (admin) - Parcela {parcela.numero}"
         mensagem = f"Você confirmou manualmente o pagamento da parcela {parcela.numero} de {parcela.usuario.nome} (R$ {parcela.valor:.2f})."
         enviar_email_notificacao(assunto, mensagem)
-        
         flash('Pagamento confirmado e lançado no caixa!', 'success')
     else:
         flash('Esta parcela já estava confirmada.', 'info')
