@@ -735,8 +735,9 @@ def nova_foto():
         return redirect(url_for('fotos'))
     return render_template('admin_foto_form.html', form=form)
 
-if __name__ == '__main__':
-    with app.app_context():
+with app.app_context():
         db.create_all()
         inicializar_dados()
+
+if __name__ == '__main__':
     app.run(debug=True)
