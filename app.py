@@ -13,6 +13,9 @@ from models import db, Usuario, DiaEvento, Refeicao, Movimentacao, ItemCompra, P
 from forms import MovimentacaoForm, ItemCompraForm, RefeicaoForm, LoginForm, PagamentoForm, FotoForm
 from utils import gerar_csv_extrato
 
+# Importa a biblioteca para gerar PIX oficial
+from pixqrcode import PixQrCode
+
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'troque-esta-chave-por-uma-segura'
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///evento.db'
@@ -214,10 +217,26 @@ def minhas_parcelas():
     parcelas = Parcela.query.filter_by(usuario_id=current_user.id).order_by(Parcela.numero).all()
     return render_template('minhas_parcelas.html', parcelas=parcelas)
 
-# Função auxiliar para gerar o payload PIX (código copia e cola)
-def gerar_payload_pix(chave_pix, valor, nome="Natal da Familia", cidade="SAO PAULO"):
-    # Payload simplificado (funciona na maioria dos apps)
-    payload = f"00020126360014BR.GOV.BCB.PIX0114{chave_pix}5204000053039865404{int(valor*100)}5802BR5925{nome}6009{cidade}62070503***6304"
+# Função auxiliar para gerar o payload PIX (código copia e cola) usando a biblioteca oficial
+def gerar_payload_pix(chave_pix, valor, nome="Natal da Familia", cidade="SAO PAULO", txid=None):
+    """
+    Gera o payload PIX (BR Code) válido usando a biblioteca pixqrcode.
+    Retorna uma string pronta para ser usada no QR Code e no copia e cola.
+    """
+    # Cria o objeto PIX com os dados obrigatórios
+    pix = PixQrCode(nome, chave_pix, cidade)
+    
+    # Define o valor da transação (em reais, com ponto)
+    pix.valor = valor
+    
+    # Define um identificador único para a transação (opcional, mas recomendado)
+    if txid is None:
+        pix.txid = f"EVENTO{datetime.now().strftime('%Y%m%d%H%M%S')}"
+    else:
+        pix.txid = txid
+    
+    # Gera o payload completo com CRC16 válido
+    payload = pix.obter_payload()
     return payload
 
 @app.route('/pagar_parcela/<int:parcela_id>', methods=['GET', 'POST'])
@@ -228,9 +247,13 @@ def pagar_parcela(parcela_id):
         return redirect(url_for('minhas_parcelas'))
     
     form = PagamentoForm()
-    # Gerar payload PIX para exibir na página
-    chave_pix = "48204922841"  # SUBSTITUA PELA SUA CHAVE PIX
-    payload = gerar_payload_pix(chave_pix, parcela.valor)
+    
+    # Configuração da chave PIX (SUBSTITUA PELA SUA CHAVE REAL)
+    chave_pix = "majenkyo@gmail.com"  # ALTERE AQUI
+    
+    # Gera o payload PIX válido usando a biblioteca oficial
+    txid = f"PAR{parcela.id:06d}{datetime.now().strftime('%y%m%d')}"
+    payload = gerar_payload_pix(chave_pix, parcela.valor, txid=txid)
     
     if form.validate_on_submit():
         if form.comprovante.data:
@@ -259,9 +282,12 @@ def gerar_qr_parcela(parcela_id):
     parcela = Parcela.query.get_or_404(parcela_id)
     if parcela.usuario_id != current_user.id:
         return "Acesso negado", 403
-    chave_pix = "48204922841"
-    texto_pix = gerar_payload_pix(chave_pix, parcela.valor)
-    img = qrcode.make(texto_pix)
+    
+    chave_pix = "majenkyo@gmail.com"  # ALTERE AQUI
+    txid = f"PAR{parcela.id:06d}{datetime.now().strftime('%y%m%d')}"
+    payload = gerar_payload_pix(chave_pix, parcela.valor, txid=txid)
+    
+    img = qrcode.make(payload)
     buf = BytesIO()
     img.save(buf, 'PNG')
     buf.seek(0)
@@ -274,8 +300,9 @@ def obter_payload_parcela(parcela_id):
     parcela = Parcela.query.get_or_404(parcela_id)
     if parcela.usuario_id != current_user.id:
         return "Acesso negado", 403
-    chave_pix = "48204922841"
-    payload = gerar_payload_pix(chave_pix, parcela.valor)
+    chave_pix = "majenkyo@gmail.com"  # ALTERE AQUI
+    txid = f"PAR{parcela.id:06d}{datetime.now().strftime('%y%m%d')}"
+    payload = gerar_payload_pix(chave_pix, parcela.valor, txid=txid)
     return payload, 200, {'Content-Type': 'text/plain'}
 
 # --- Pagamento com Cartão (InfinitePay) ---
