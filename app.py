@@ -69,6 +69,8 @@ def before_request():
 
 def inicializar_dados():
     with app.app_context():
+        db.drop_all()  # <--- ISSO DELETA TODAS AS TABELAS
+        db.create_all()  # <--- ISSO RECRIA AS TABELAS
         ano_atual = date.today().year
         dias = [date(ano_atual, 12, 24), date(ano_atual, 12, 25),
                 date(ano_atual, 12, 26), date(ano_atual, 12, 27)]
