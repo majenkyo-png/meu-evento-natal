@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>{{ titulo }}</h2>
+<form method="POST">
+    {{ form.hidden_tag() }}
+    <div class="mb-3">{{ form.nome.label }} {{ form.nome(class="form-control") }}</div>
+    <div class="mb-3">{{ form.idade.label }} {{ form.idade(class="form-control") }}</div>
+    <button type="submit" class="btn btn-primary">Salvar</button>
+    <a href="{{ url_for('listar_familiares') }}" class="btn btn-secondary">Cancelar</a>
+</form>
+{% endblock %}

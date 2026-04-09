@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>👨‍👩‍👧 Meus Familiares</h2>
+<a href="{{ url_for('novo_familiar') }}" class="btn btn-primary mb-3">➕ Adicionar Familiar</a>
+
+{% if familiares %}
+<table class="table table-striped">
+    <thead>
+        <tr><th>Nome</th><th>Idade</th><th>Valor por parcela</th><th>Ações</th></tr>
+    </thead>
+    <tbody>
+    {% for familiar in familiares %}
+        {% if familiar.idade >= 6 and familiar.idade <= 10 %}
+            {% set valor = 25.00 %}
+        {% elif familiar.idade > 10 %}
+            {% set valor = 50.00 %}
+        {% else %}
+            {% set valor = 0.00 %}
+        {% endif %}
+    <tr>
+        <td>{{ familiar.nome }}</td>
+        <td>{{ familiar.idade }} anos</td>
+        <td>R$ {{ "%.2f"|format(valor) }}</td>
+        <td><a href="{{ url_for('deletar_familiar', id=familiar.id) }}" class="btn btn-sm btn-danger" onclick="return confirm('Remover {{ familiar.nome }}?')">Remover</a></td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p>Nenhum familiar cadastrado ainda.</p>
+{% endif %}
+{% endblock %}

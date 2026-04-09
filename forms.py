@@ -1,7 +1,7 @@
 from flask_wtf import FlaskForm
 from flask_wtf.file import FileField, FileAllowed
-from wtforms import StringField, FloatField, SelectField, DateField, BooleanField, TextAreaField, PasswordField
-from wtforms.validators import DataRequired, Optional, Email
+from wtforms import StringField, FloatField, SelectField, DateField, BooleanField, TextAreaField, PasswordField, IntegerField
+from wtforms.validators import DataRequired, Optional, Email, NumberRange
 
 class MovimentacaoForm(FlaskForm):
     descricao = StringField('Descrição', validators=[DataRequired()])
@@ -30,3 +30,7 @@ class FotoForm(FlaskForm):
     titulo = StringField('Título')
     descricao = TextAreaField('Descrição')
     imagem = FileField('Imagem', validators=[DataRequired(), FileAllowed(['jpg','png','jpeg'], 'Apenas imagens')])
+
+class FamiliarForm(FlaskForm):
+    nome = StringField('Nome completo', validators=[DataRequired()])
+    idade = IntegerField('Idade', validators=[DataRequired(), NumberRange(min=0, max=120, message='Idade entre 0 e 120 anos')])

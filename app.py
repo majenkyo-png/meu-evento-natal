@@ -1,4 +1,5 @@
 import os
+import binascii
 from datetime import date, datetime
 from flask import Flask, render_template, redirect, url_for, request, flash, session, send_file
 from werkzeug.utils import secure_filename
@@ -9,10 +10,9 @@ import requests
 import smtplib
 from email.message import EmailMessage
 
-from models import db, Usuario, DiaEvento, Refeicao, Movimentacao, ItemCompra, Parcela, Foto
-from forms import MovimentacaoForm, ItemCompraForm, RefeicaoForm, LoginForm, PagamentoForm, FotoForm
+from models import db, Usuario, DiaEvento, Refeicao, Movimentacao, ItemCompra, Parcela, Foto, Familiar
+from forms import MovimentacaoForm, ItemCompraForm, RefeicaoForm, LoginForm, PagamentoForm, FotoForm, FamiliarForm
 from utils import gerar_csv_extrato
-import binascii
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'troque-esta-chave-por-uma-segura'
@@ -88,8 +88,8 @@ def inicializar_dados():
             db.session.add(inicial)
             db.session.commit()
 
+# ================= FUNÇÕES PIX =================
 def crc16(payload):
-    """Calcula o CRC16 padrão do PIX (CCITT-FALSE)."""
     crc = 0xFFFF
     for char in payload:
         crc ^= ord(char) << 8
@@ -101,43 +101,63 @@ def crc16(payload):
             crc &= 0xFFFF
     return f"{crc:04X}"
 
-def gerar_payload_pix(chave_pix, valor):
-    """Gera o payload PIX (Copia e Cola) manualmente, sem depender de bibliotecas."""
-    nome_recebedor = "Natal da Familia"
-    cidade = "SAO PAULO"
-    txid = "***" # Deixe "***" para o banco gerar o ID ou use um ID próprio sem espaços
-    
-    # Formata o valor com 2 casas decimais
+def gerar_payload_pix(chave_pix, valor, nome_recebedor="Natal da Familia", cidade="SAO PAULO", txid="***"):
     valor_str = f"{valor:.2f}"
-    
-    # Função auxiliar para o formato TLV (Tag-Length-Value) do padrão EMV
     def tlv(id_tag, valor_tag):
         return f"{id_tag}{len(valor_tag):02d}{valor_tag}"
-    
-    # Bloco 26: Informações da conta (GUI + Chave)
     gui = tlv("00", "br.gov.bcb.pix")
     key = tlv("01", chave_pix)
     merchant_account = tlv("26", gui + key)
-    
-    # Bloco 62: Dados adicionais (TXID)
     add_data = tlv("62", tlv("05", txid))
-    
-    # Monta o Payload principal
     payload = (
-        tlv("00", "01") +             # Formato do Payload
-        merchant_account +            # Dados da Conta/Chave
-        tlv("52", "0000") +           # Categoria do Comerciante
-        tlv("53", "986") +            # Moeda (986 = BRL)
-        tlv("54", valor_str) +        # Valor
-        tlv("58", "BR") +             # País
-        tlv("59", nome_recebedor) +   # Nome
-        tlv("60", cidade) +           # Cidade
-        add_data +                    # TXID
-        "6304"                        # Tag final do CRC16
+        tlv("00", "01") +
+        merchant_account +
+        tlv("52", "0000") +
+        tlv("53", "986") +
+        tlv("54", valor_str) +
+        tlv("58", "BR") +
+        tlv("59", nome_recebedor[:25]) +
+        tlv("60", cidade[:15]) +
+        add_data +
+        "6304"
     )
-    
-    # Retorna o payload final com o CRC16 calculado
     return payload + crc16(payload)
+# ===============================================
+
+# ========== FUNÇÃO AUXILIAR PARA CRIAR PARCELAS ==========
+def criar_parcelas_para_pessoa(usuario_id, familiar_id, idade, nome_pessoa):
+    """Cria 9 parcelas com valor baseado na idade:
+       - 6 a 10 anos: R$ 25 (meia)
+       - Maior que 10 anos: R$ 50 (inteira)
+       - Menor que 6 anos: R$ 0 (não paga, mas registra)
+    """
+    if idade >= 6 and idade <= 10:
+        valor_parcela = 25.00
+        tipo = "meia"
+    elif idade > 10:
+        valor_parcela = 50.00
+        tipo = "inteira"
+    else:
+        valor_parcela = 0.00
+        tipo = "gratuito"
+    
+    # Se for gratuito (menor que 6 anos), já marca como confirmado
+    status_inicial = "confirmado" if valor_parcela == 0 else "pendente"
+    
+    for i in range(1, 10):
+        data_venc = date(2025, i, 1) if i <= 12 else date(2026, i-12, 1)
+        parcela = Parcela(
+            usuario_id=usuario_id,
+            familiar_id=familiar_id,
+            numero=i,
+            valor=valor_parcela,
+            data_vencimento=data_venc,
+            status=status_inicial,
+            observacao=f"{tipo} - {nome_pessoa}" if valor_parcela == 0 else None
+        )
+        db.session.add(parcela)
+    db.session.commit()
+# ========================================================
 
 # --- Rotas de autenticação ---
 @app.route('/login', methods=['GET', 'POST'])
@@ -172,18 +192,8 @@ def cadastro():
                 flash('Primeiro usuário cadastrado como ADMINISTRADOR!', 'success')
             db.session.add(novo)
             db.session.commit()
-            valor_parcela = 50.00
-            for i in range(1, 10):
-                data_venc = date(2025, i, 1) if i <= 12 else date(2026, i-12, 1)
-                parcela = Parcela(
-                    usuario_id=novo.id,
-                    numero=i,
-                    valor=valor_parcela,
-                    data_vencimento=data_venc,
-                    status='pendente'
-                )
-                db.session.add(parcela)
-            db.session.commit()
+            # Usuário responsável (maior de 10 anos, valor cheio)
+            criar_parcelas_para_pessoa(novo.id, None, 30, nome)  # 30 anos como exemplo
             flash('Cadastro realizado! Faça login.', 'success')
             return redirect(url_for('login'))
     return render_template('cadastro.html')
@@ -193,6 +203,7 @@ def logout():
     logout_user()
     return redirect(url_for('login'))
 
+# --- Rotas principais ---
 @app.route('/')
 def index():
     entradas = db.session.query(db.func.sum(Movimentacao.valor)).filter_by(tipo='entrada').scalar() or 0
@@ -255,22 +266,131 @@ def extrato_download():
     movimentacoes = Movimentacao.query.order_by(Movimentacao.data_mov).all()
     return gerar_csv_extrato(movimentacoes)
 
-# --- Parcelas (PIX) ---
+# --- Gerenciamento de Familiares ---
+@app.route('/familiares')
+@login_required
+def listar_familiares():
+    familiares = Familiar.query.filter_by(responsavel_id=current_user.id).all()
+    return render_template('familiares.html', familiares=familiares)
+
+@app.route('/familiares/novo', methods=['GET', 'POST'])
+@login_required
+def novo_familiar():
+    form = FamiliarForm()
+    if form.validate_on_submit():
+        nome = form.nome.data
+        idade = form.idade.data
+        
+        familiar = Familiar(
+            responsavel_id=current_user.id,
+            nome=nome,
+            idade=idade
+        )
+        db.session.add(familiar)
+        db.session.commit()
+        
+        # Criar parcelas para o familiar baseado na idade
+        criar_parcelas_para_pessoa(current_user.id, familiar.id, idade, nome)
+        
+        flash(f'{nome} foi adicionado com sucesso!', 'success')
+        return redirect(url_for('listar_familiares'))
+    return render_template('familiar_form.html', form=form, titulo='Adicionar Familiar')
+
+@app.route('/familiares/deletar/<int:id>')
+@login_required
+def deletar_familiar(id):
+    familiar = Familiar.query.get_or_404(id)
+    if familiar.responsavel_id != current_user.id:
+        flash('Acesso negado.', 'danger')
+        return redirect(url_for('listar_familiares'))
+    
+    # Deletar todas as parcelas associadas
+    for parcela in familiar.parcelas:
+        db.session.delete(parcela)
+    db.session.delete(familiar)
+    db.session.commit()
+    flash(f'{familiar.nome} foi removido.', 'success')
+    return redirect(url_for('listar_familiares'))
+
+# --- Lista de Participantes (com separação por idade) ---
+@app.route('/listar_participantes')
+@login_required
+def listar_participantes():
+    # Participantes = usuário + seus familiares
+    participantes = []
+    
+    # Adiciona o próprio usuário (responsável)
+    participantes.append({
+        'nome': current_user.nome,
+        'idade': 30,  # idade padrão para responsável (maior que 10)
+        'tipo': 'responsavel',
+        'valor_parcela': 50.00,
+        'pagou_alguma': any(p.status == 'confirmado' for p in current_user.parcelas if p.familiar_id is None)
+    })
+    
+    # Adiciona os familiares
+    for familiar in current_user.familiares:
+        idade = familiar.idade
+        if idade >= 6 and idade <= 10:
+            valor_parcela = 25.00
+        elif idade > 10:
+            valor_parcela = 50.00
+        else:
+            valor_parcela = 0.00
+        
+        pagou_alguma = any(p.status == 'confirmado' for p in familiar.parcelas)
+        
+        participantes.append({
+            'nome': familiar.nome,
+            'idade': idade,
+            'tipo': 'familiar',
+            'valor_parcela': valor_parcela,
+            'pagou_alguma': pagou_alguma
+        })
+    
+    # Separar crianças (6 a 10 anos) e adultos (maior que 10 anos)
+    criancas = [p for p in participantes if 6 <= p['idade'] <= 10]
+    adultos = [p for p in participantes if p['idade'] > 10 or p['tipo'] == 'responsavel']
+    menores_6 = [p for p in participantes if p['idade'] < 6]
+    
+    return render_template('listar_participantes.html', 
+                           criancas=criancas, 
+                           adultos=adultos,
+                           menores_6=menores_6)
+
+# --- Parcelas (PIX) - mostra parcelas do usuário e seus dependentes ---
 @app.route('/minhas_parcelas')
+@login_required
 def minhas_parcelas():
-    parcelas = Parcela.query.filter_by(usuario_id=current_user.id).order_by(Parcela.numero).all()
-    return render_template('minhas_parcelas.html', parcelas=parcelas)
+    # Buscar parcelas do usuário (responsável)
+    parcelas_proprias = Parcela.query.filter_by(usuario_id=current_user.id, familiar_id=None).order_by(Parcela.numero).all()
+    
+    # Buscar parcelas de todos os familiares
+    parcelas_familiares = []
+    for familiar in current_user.familiares:
+        for parcela in familiar.parcelas:
+            parcelas_familiares.append({
+                'parcela': parcela,
+                'nome_familiar': familiar.nome,
+                'idade': familiar.idade
+            })
+    
+    return render_template('minhas_parcelas.html', 
+                           parcelas_proprias=parcelas_proprias,
+                           parcelas_familiares=parcelas_familiares)
 
 @app.route('/pagar_parcela/<int:parcela_id>', methods=['GET', 'POST'])
 @login_required
 def pagar_parcela(parcela_id):
     parcela = Parcela.query.get_or_404(parcela_id)
+    
+    # Verificar se o usuário tem permissão para pagar esta parcela
     if parcela.usuario_id != current_user.id:
         flash('Acesso negado a esta parcela.', 'danger')
         return redirect(url_for('minhas_parcelas'))
     
     form = PagamentoForm()
-    chave_pix = "48204922841"  # ALTERE PARA SUA CHAVE PIX
+    chave_pix = "majenkyo@gmail.com"  # ALTERE PARA SUA CHAVE PIX
     try:
         payload = gerar_payload_pix(chave_pix, parcela.valor)
     except Exception as e:
@@ -289,8 +409,9 @@ def pagar_parcela(parcela_id):
         parcela.observacao = form.observacao.data
         db.session.commit()
         
+        nome_pessoa = parcela.familiar.nome if parcela.familiar else current_user.nome
         assunto = f"Novo comprovante de pagamento PIX - Parcela {parcela.numero}"
-        mensagem = f"Olá! O usuário {parcela.usuario.nome} enviou comprovante da parcela {parcela.numero} (R$ {parcela.valor:.2f}).\nAcesse o admin para confirmar: https://meu-evento-natal-1.onrender.com/admin/parcelas"
+        mensagem = f"Olá! {nome_pessoa} enviou comprovante da parcela {parcela.numero} (R$ {parcela.valor:.2f}).\nAcesse o admin para confirmar: https://meu-evento-natal-1.onrender.com/admin/parcelas"
         enviar_email_notificacao(assunto, mensagem)
         
         flash('Comprovante enviado! Aguarde confirmação do organizador.', 'success')
@@ -304,7 +425,7 @@ def gerar_qr_parcela(parcela_id):
     parcela = Parcela.query.get_or_404(parcela_id)
     if parcela.usuario_id != current_user.id:
         return "Acesso negado", 403
-    chave_pix = "48204922841"
+    chave_pix = "majenkyo@gmail.com"
     payload = gerar_payload_pix(chave_pix, parcela.valor)
     img = qrcode.make(payload)
     buf = BytesIO()
@@ -318,7 +439,7 @@ def obter_payload_parcela(parcela_id):
     parcela = Parcela.query.get_or_404(parcela_id)
     if parcela.usuario_id != current_user.id:
         return "Acesso negado", 403
-    chave_pix = "48204922841"
+    chave_pix = "majenkyo@gmail.com"
     payload = gerar_payload_pix(chave_pix, parcela.valor)
     return payload, 200, {'Content-Type': 'text/plain'}
 
@@ -342,7 +463,7 @@ def pagar_parcela_cartao(parcela_id):
             {
                 "quantity": 1,
                 "price": int(parcela.valor * 100),
-                "description": f"Parcela {parcela.numero} - Natal da Família"
+                "description": f"Parcela {parcela.numero} - {parcela.familiar.nome if parcela.familiar else current_user.nome}"
             }
         ],
         "shipping": {
@@ -397,7 +518,7 @@ def webhook_infinitepay():
             parcela.status = 'confirmado'
             parcela.data_pagamento = date.today()
             mov = Movimentacao(
-                descricao=f'Pagamento cartão - Parcela {parcela.numero} - {parcela.usuario.nome}',
+                descricao=f'Pagamento cartão - Parcela {parcela.numero} - {parcela.familiar.nome if parcela.familiar else parcela.usuario.nome}',
                 valor=parcela.valor,
                 tipo='entrada',
                 data_mov=date.today(),
@@ -414,7 +535,7 @@ def webhook_infinitepay():
 
     return {"success": True, "message": "Recebido, mas pagamento não aprovado."}, 200
 
-# --- Área administrativa ---
+# --- Área administrativa (apenas admin) ---
 def admin_required(f):
     from functools import wraps
     @wraps(f)
@@ -443,7 +564,7 @@ def confirmar_parcela(id):
     if parcela.status != 'confirmado':
         parcela.status = 'confirmado'
         mov = Movimentacao(
-            descricao=f'Pagamento parcela {parcela.numero} - {parcela.usuario.nome}',
+            descricao=f'Pagamento parcela {parcela.numero} - {parcela.familiar.nome if parcela.familiar else parcela.usuario.nome}',
             valor=parcela.valor,
             tipo='entrada',
             data_mov=date.today(),
@@ -452,7 +573,7 @@ def confirmar_parcela(id):
         db.session.add(mov)
         db.session.commit()
         assunto = f"Pagamento confirmado (admin) - Parcela {parcela.numero}"
-        mensagem = f"Você confirmou manualmente o pagamento da parcela {parcela.numero} de {parcela.usuario.nome} (R$ {parcela.valor:.2f})."
+        mensagem = f"Você confirmou manualmente o pagamento da parcela {parcela.numero} de {parcela.familiar.nome if parcela.familiar else parcela.usuario.nome} (R$ {parcela.valor:.2f})."
         enviar_email_notificacao(assunto, mensagem)
         flash('Pagamento confirmado e lançado no caixa!', 'success')
     else:

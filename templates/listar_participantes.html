@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>📋 Lista de Participantes</h2>
+
+{% if adultos %}
+<h3>👨 Adultos (acima de 10 anos)</h3>
+<table class="table table-success">
+    <thead>
+        <tr><th>Nome</th><th>Idade</th><th>Valor por parcela</th><th>Status</th></tr>
+    </thead>
+    <tbody>
+    {% for p in adultos %}
+    <tr>
+        <td>{{ p.nome }}</td>
+        <td>{{ p.idade }} anos</td>
+        <td>R$ {{ "%.2f"|format(p.valor_parcela) }}</td>
+        <td>{% if p.pagou_alguma %}✅ Pagou{% else %}⏳ Pendente{% endif %}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>
+{% endif %}
+
+{% if criancas %}
+<h3>🧒 Crianças (6 a 10 anos) - MEIA ENTRADA</h3>
+<table class="table table-warning">
+    <thead>
+        <tr><th>Nome</th><th>Idade</th><th>Valor por parcela</th><th>Status</th></tr>
+    </thead>
+    <tbody>
+    {% for p in criancas %}
+    <tr>
+        <td>{{ p.nome }}</td>
+        <td>{{ p.idade }} anos</td>
+        <td>R$ {{ "%.2f"|format(p.valor_parcela) }}</td>
+        <td>{% if p.pagou_alguma %}✅ Pagou{% else %}⏳ Pendente{% endif %}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>
+{% endif %}
+
+{% if menores_6 %}
+<h3>🍼 Crianças (menores de 6 anos) - GRÁTIS</h3>
+<table class="table table-info">
+    <thead>
+        <tr><th>Nome</th><th>Idade</th><th>Valor por parcela</th><th>Status</th></tr>
+    </thead>
+    <tbody>
+    {% for p in menores_6 %}
+    <tr>
+        <td>{{ p.nome }}</td>
+        <td>{{ p.idade }} anos</td>
+        <td>R$ {{ "%.2f"|format(p.valor_parcela) }}</td>
+        <td>✅ Gratuito (confirmado)</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>
+{% endif %}
+
+{% if not adultos and not criancas and not menores_6 %}
+<p>Nenhum participante cadastrado ainda.</p>
+{% endif %}
+{% endblock %}

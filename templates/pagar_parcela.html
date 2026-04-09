@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-<h2>Pagamento da parcela {{ parcela.numero }}/9</h2>
+<h2>Pagamento da parcela {{ parcela.numero }}/9 - {{ participante.nome }}</h2>
 <p><strong>Valor:</strong> R$ {{ "%.2f"|format(parcela.valor) }}</p>
 <p><strong>Vencimento:</strong> {{ parcela.data_vencimento.strftime('%d/%m/%Y') }}</p>
 <hr>

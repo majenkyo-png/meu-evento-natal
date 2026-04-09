@@ -1,11 +1,11 @@
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
-from flask_login import UserMixin  # <--- IMPORTANTE
+from flask_login import UserMixin
 
 db = SQLAlchemy()
 
-class Usuario(UserMixin, db.Model):  # <--- HERDA DE UserMixin
+class Usuario(UserMixin, db.Model):
     __tablename__ = 'usuarios'
     id = db.Column(db.Integer, primary_key=True)
     nome = db.Column(db.String(100), nullable=False)
@@ -15,14 +15,13 @@ class Usuario(UserMixin, db.Model):  # <--- HERDA DE UserMixin
     data_cadastro = db.Column(db.DateTime, default=datetime.utcnow)
     is_admin = db.Column(db.Boolean, default=False)
     parcelas = db.relationship('Parcela', backref='usuario', lazy=True)
+    familiares = db.relationship('Familiar', backref='responsavel', lazy=True)
 
     def set_senha(self, senha):
         self.senha_hash = generate_password_hash(senha)
 
     def verificar_senha(self, senha):
         return check_password_hash(self.senha_hash, senha)
-
-# O restante das classes (DiaEvento, Refeicao, Movimentacao, ItemCompra, Parcela, Foto) continua igual
 
 class DiaEvento(db.Model):
     __tablename__ = 'dias_evento'
@@ -54,10 +53,20 @@ class ItemCompra(db.Model):
     comprado = db.Column(db.Boolean, default=False)
     categoria = db.Column(db.String(50), nullable=True)
 
+class Familiar(db.Model):
+    __tablename__ = 'familiares'
+    id = db.Column(db.Integer, primary_key=True)
+    responsavel_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'), nullable=False)
+    nome = db.Column(db.String(100), nullable=False)
+    idade = db.Column(db.Integer, nullable=False)
+    data_cadastro = db.Column(db.DateTime, default=datetime.utcnow)
+    parcelas = db.relationship('Parcela', backref='familiar', lazy=True)
+
 class Parcela(db.Model):
     __tablename__ = 'parcelas'
     id = db.Column(db.Integer, primary_key=True)
     usuario_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'), nullable=False)
+    familiar_id = db.Column(db.Integer, db.ForeignKey('familiares.id'), nullable=True)
     numero = db.Column(db.Integer, nullable=False)
     valor = db.Column(db.Float, nullable=False)
     data_vencimento = db.Column(db.Date, nullable=False)
