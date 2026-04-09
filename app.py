@@ -176,6 +176,7 @@ def login():
             flash('E-mail ou senha inválidos', 'danger')
     return render_template('login.html')
 
+# Na rota de cadastro, adicione o campo idade
 @app.route('/cadastro', methods=['GET', 'POST'])
 def cadastro():
     if request.method == 'POST':
@@ -183,19 +184,23 @@ def cadastro():
         email = request.form.get('email')
         senha = request.form.get('senha')
         telefone = request.form.get('telefone')
+        idade = request.form.get('idade')
         if Usuario.query.filter_by(email=email).first():
             flash('E-mail já cadastrado. Faça login.', 'danger')
         else:
             primeiro_usuario = Usuario.query.count() == 0
-            novo = Usuario(nome=nome, email=email, telefone=telefone)
+            novo = Usuario(nome=nome, email=email, telefone=telefone, idade=idade)
             novo.set_senha(senha)
             if primeiro_usuario:
                 novo.is_admin = True
                 flash('Primeiro usuário cadastrado como ADMINISTRADOR!', 'success')
             db.session.add(novo)
             db.session.commit()
-            # Usuário responsável (maior de 10 anos, valor cheio)
-            criar_parcelas_para_pessoa(novo.id, None, 30, nome)  # 30 anos como exemplo
+            
+            # Usuário responsável (usa a idade fornecida ou padrão 30)
+            idade_valida = int(idade) if idade and idade.isdigit() else 30
+            criar_parcelas_para_pessoa(novo.id, None, idade_valida, nome)
+            
             flash('Cadastro realizado! Faça login.', 'success')
             return redirect(url_for('login'))
     return render_template('cadastro.html')
@@ -364,35 +369,36 @@ def listar_participantes():
 @app.route('/minhas_parcelas')
 @login_required
 def minhas_parcelas():
-    # Buscar parcelas do usuário (responsável)
+    # Buscar parcelas do usuário (responsável) - agrupadas
     parcelas_proprias = Parcela.query.filter_by(usuario_id=current_user.id, familiar_id=None).order_by(Parcela.numero).all()
     
-    # Buscar parcelas de todos os familiares
-    parcelas_familiares = []
+    # Buscar familiares e suas parcelas - agrupado por familiar
+    familiares_com_parcelas = []
     for familiar in current_user.familiares:
-        for parcela in familiar.parcelas:
-            parcelas_familiares.append({
-                'parcela': parcela,
-                'nome_familiar': familiar.nome,
-                'idade': familiar.idade
+        parcelas = Parcela.query.filter_by(familiar_id=familiar.id).order_by(Parcela.numero).all()
+        if parcelas:
+            familiares_com_parcelas.append({
+                'familiar': familiar,
+                'parcelas': parcelas
             })
     
     return render_template('minhas_parcelas.html', 
                            parcelas_proprias=parcelas_proprias,
-                           parcelas_familiares=parcelas_familiares)
+                           familiares_com_parcelas=familiares_com_parcelas)
 
 @app.route('/pagar_parcela/<int:parcela_id>', methods=['GET', 'POST'])
 @login_required
 def pagar_parcela(parcela_id):
     parcela = Parcela.query.get_or_404(parcela_id)
     
-    # Verificar se o usuário tem permissão para pagar esta parcela
+    # Verificar se o usuário tem permissão
     if parcela.usuario_id != current_user.id:
         flash('Acesso negado a esta parcela.', 'danger')
         return redirect(url_for('minhas_parcelas'))
     
     form = PagamentoForm()
     chave_pix = "majenkyo@gmail.com"  # ALTERE PARA SUA CHAVE PIX
+    
     try:
         payload = gerar_payload_pix(chave_pix, parcela.valor)
     except Exception as e:
@@ -413,7 +419,7 @@ def pagar_parcela(parcela_id):
         
         nome_pessoa = parcela.familiar.nome if parcela.familiar else current_user.nome
         assunto = f"Novo comprovante de pagamento PIX - Parcela {parcela.numero}"
-        mensagem = f"Olá! {nome_pessoa} enviou comprovante da parcela {parcela.numero} (R$ {parcela.valor:.2f}).\nAcesse o admin para confirmar: https://meu-evento-natal-1.onrender.com/admin/parcelas"
+        mensagem = f"Olá! {nome_pessoa} enviou comprovante da parcela {parcela.numero} (R$ {parcela.valor:.2f}).\nAcesse o admin para confirmar."
         enviar_email_notificacao(assunto, mensagem)
         
         flash('Comprovante enviado! Aguarde confirmação do organizador.', 'success')

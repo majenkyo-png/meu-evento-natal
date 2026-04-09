@@ -2,54 +2,71 @@
 {% block content %}
 <h2>💰 Minhas Parcelas</h2>
 
+<!-- Parcelas do próprio usuário -->
 {% if parcelas_proprias %}
-<h3>Minhas parcelas (Responsável)</h3>
+<h3>Minhas parcelas</h3>
 <table class="table table-bordered">
-    <thead><tr><th>Parcela</th><th>Valor</th><th>Vencimento</th><th>Status</th><th>Ação</th></tr></thead>
+    <thead>
+        <tr class="table-dark">
+            <th>Parcela</th><th>Valor</th><th>Vencimento</th><th>Status</th><th>Ação</th>
+        </tr>
+    </thead>
     <tbody>
-    {% for p in parcelas_proprias %}
-    <tr class="{% if p.status == 'confirmado' %}table-success{% elif p.status == 'pago' %}table-warning{% endif %}">
-        <td>{{ p.numero }}/9</td>
-        <td>R$ {{ "%.2f"|format(p.valor) }}</td>
-        <td>{{ p.data_vencimento.strftime('%d/%m/%Y') }}</td>
-        <td>{% if p.status == 'confirmado' %}✅ Pago{% elif p.status == 'pago' %}⏳ Aguardando{% else %}🔴 Pendente{% endif %}</td>
-        <td>{% if p.status == 'pendente' and p.valor > 0 %}
-            <a href="{{ url_for('pagar_parcela', parcela_id=p.id) }}" class="btn btn-sm btn-success">Pagar</a>
-            <a href="{{ url_for('pagar_parcela_cartao', parcela_id=p.id) }}" class="btn btn-sm btn-primary">Cartão</a>
-        {% endif %}</td>
-    </tr>
-    {% endfor %}
+        {% for p in parcelas_proprias %}
+        <tr class="{% if p.status == 'confirmado' %}table-success{% elif p.status == 'pago' %}table-warning{% endif %}">
+            <td>{{ p.numero }}/9</td>
+            <td>R$ {{ "%.2f"|format(p.valor) }}</td>
+            <td>{{ p.data_vencimento.strftime('%d/%m/%Y') }}</td>
+            <td>
+                {% if p.status == 'confirmado' %}✅ Pago
+                {% elif p.status == 'pago' %}⏳ Aguardando confirmação
+                {% else %}🔴 Pendente{% endif %}
+            </td>
+            <td>
+                {% if p.status == 'pendente' and p.valor > 0 %}
+                    <a href="{{ url_for('pagar_parcela', parcela_id=p.id) }}" class="btn btn-sm btn-success">Pagar com PIX</a>
+                    <a href="{{ url_for('pagar_parcela_cartao', parcela_id=p.id) }}" class="btn btn-sm btn-primary">Cartão</a>
+                {% endif %}
+            </td>
+        </tr>
+        {% endfor %}
     </tbody>
 </table>
 {% endif %}
 
-{% if parcelas_familiares %}
-<h3>Parcelas dos meus familiares</h3>
-{% for item in parcelas_familiares %}
-<div class="card mb-3">
-    <div class="card-header bg-secondary text-white">{{ item.nome_familiar }} ({{ item.idade }} anos)</div>
-    <div class="card-body">
-        <table class="table table-sm">
-            <thead><tr><th>Parcela</th><th>Valor</th><th>Vencimento</th><th>Status</th><th>Ação</th></tr></thead>
-            <tbody>
-            <tr class="{% if item.parcela.status == 'confirmado' %}table-success{% elif item.parcela.status == 'pago' %}table-warning{% endif %}">
-                <td>{{ item.parcela.numero }}/9</td>
-                <td>R$ {{ "%.2f"|format(item.parcela.valor) }}</td>
-                <td>{{ item.parcela.data_vencimento.strftime('%d/%m/%Y') }}</td>
-                <td>{% if item.parcela.status == 'confirmado' %}✅ Pago{% elif item.parcela.status == 'pago' %}⏳ Aguardando{% else %}🔴 Pendente{% endif %}</td>
-                <td>{% if item.parcela.status == 'pendente' and item.parcela.valor > 0 %}
-                    <a href="{{ url_for('pagar_parcela', parcela_id=item.parcela.id) }}" class="btn btn-sm btn-success">Pagar</a>
-                    <a href="{{ url_for('pagar_parcela_cartao', parcela_id=item.parcela.id) }}" class="btn btn-sm btn-primary">Cartão</a>
-                {% endif %}</td>
-            </tr>
-            </tbody>
-        </table>
-    </div>
-</div>
+<!-- Parcelas dos familiares (agrupadas por familiar) -->
+{% for grupo in familiares_com_parcelas %}
+<h3 class="mt-4">Parcelas de {{ grupo.familiar.nome }} ({{ grupo.familiar.idade }} anos)</h3>
+<table class="table table-bordered">
+    <thead>
+        <tr class="table-secondary">
+            <th>Parcela</th><th>Valor</th><th>Vencimento</th><th>Status</th><th>Ação</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for p in grupo.parcelas %}
+        <tr class="{% if p.status == 'confirmado' %}table-success{% elif p.status == 'pago' %}table-warning{% endif %}">
+            <td>{{ p.numero }}/9</td>
+            <td>R$ {{ "%.2f"|format(p.valor) }}</td>
+            <td>{{ p.data_vencimento.strftime('%d/%m/%Y') }}</td>
+            <td>
+                {% if p.status == 'confirmado' %}✅ Pago
+                {% elif p.status == 'pago' %}⏳ Aguardando confirmação
+                {% else %}🔴 Pendente{% endif %}
+            </td>
+            <td>
+                {% if p.status == 'pendente' and p.valor > 0 %}
+                    <a href="{{ url_for('pagar_parcela', parcela_id=p.id) }}" class="btn btn-sm btn-success">Pagar com PIX</a>
+                    <a href="{{ url_for('pagar_parcela_cartao', parcela_id=p.id) }}" class="btn btn-sm btn-primary">Cartão</a>
+                {% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
 {% endfor %}
-{% endif %}
 
-{% if not parcelas_proprias and not parcelas_familiares %}
+{% if not parcelas_proprias and not familiares_com_parcelas %}
 <p>Nenhuma parcela encontrada.</p>
 {% endif %}
 {% endblock %}
