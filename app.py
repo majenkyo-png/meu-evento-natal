@@ -13,7 +13,6 @@ from models import db, Usuario, DiaEvento, Refeicao, Movimentacao, ItemCompra, P
 from forms import MovimentacaoForm, ItemCompraForm, RefeicaoForm, LoginForm, PagamentoForm, FotoForm
 from utils import gerar_csv_extrato
 import binascii
-from pybrcode.pix import generate_simple_pix
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'troque-esta-chave-por-uma-segura'
@@ -89,16 +88,56 @@ def inicializar_dados():
             db.session.add(inicial)
             db.session.commit()
 
-from pybrcode.pix import generate_simple_pix
+def crc16(payload):
+    """Calcula o CRC16 padrão do PIX (CCITT-FALSE)."""
+    crc = 0xFFFF
+    for char in payload:
+        crc ^= ord(char) << 8
+        for _ in range(8):
+            if crc & 0x8000:
+                crc = (crc << 1) ^ 0x1021
+            else:
+                crc = crc << 1
+            crc &= 0xFFFF
+    return f"{crc:04X}"
 
 def gerar_payload_pix(chave_pix, valor):
-    # Gera o payload usando a biblioteca pybrcode com a assinatura correta
-    return generate_simple_pix(
-        fullname="Natal da Familia",   # Nome do recebedor (parâmetro correto)
-        key=chave_pix,                 # Chave Pix
-        city="SAO PAULO",              # Cidade
-        value=valor                    # Valor da transação (parâmetro correto)
+    """Gera o payload PIX (Copia e Cola) manualmente, sem depender de bibliotecas."""
+    nome_recebedor = "Natal da Familia"
+    cidade = "SAO PAULO"
+    txid = "***" # Deixe "***" para o banco gerar o ID ou use um ID próprio sem espaços
+    
+    # Formata o valor com 2 casas decimais
+    valor_str = f"{valor:.2f}"
+    
+    # Função auxiliar para o formato TLV (Tag-Length-Value) do padrão EMV
+    def tlv(id_tag, valor_tag):
+        return f"{id_tag}{len(valor_tag):02d}{valor_tag}"
+    
+    # Bloco 26: Informações da conta (GUI + Chave)
+    gui = tlv("00", "br.gov.bcb.pix")
+    key = tlv("01", chave_pix)
+    merchant_account = tlv("26", gui + key)
+    
+    # Bloco 62: Dados adicionais (TXID)
+    add_data = tlv("62", tlv("05", txid))
+    
+    # Monta o Payload principal
+    payload = (
+        tlv("00", "01") +             # Formato do Payload
+        merchant_account +            # Dados da Conta/Chave
+        tlv("52", "0000") +           # Categoria do Comerciante
+        tlv("53", "986") +            # Moeda (986 = BRL)
+        tlv("54", valor_str) +        # Valor
+        tlv("58", "BR") +             # País
+        tlv("59", nome_recebedor) +   # Nome
+        tlv("60", cidade) +           # Cidade
+        add_data +                    # TXID
+        "6304"                        # Tag final do CRC16
     )
+    
+    # Retorna o payload final com o CRC16 calculado
+    return payload + crc16(payload)
 
 # --- Rotas de autenticação ---
 @app.route('/login', methods=['GET', 'POST'])
