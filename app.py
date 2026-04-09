@@ -26,6 +26,13 @@ os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
 db.init_app(app)
 
+# ===== BLOCO TEMPORÁRIO PARA RECRIAR O BANCO =====
+# Isso vai deletar TODOS os dados existentes e recriar as tabelas
+with app.app_context():
+    db.create_all()    # Recria todas as tabelas com a estrutura correta
+    print("=== BANCO RECRIADO COM SUCESSO ===")
+# ===============================================
+
 # --- Configuração de e-mail ---
 EMAIL_NOTIFICACOES = True
 EMAIL_SMTP_SERVER = "smtp.gmail.com"
