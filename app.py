@@ -215,7 +215,7 @@ def minhas_parcelas():
     parcelas = Parcela.query.filter_by(usuario_id=current_user.id).order_by(Parcela.numero).all()
     return render_template('minhas_parcelas.html', parcelas=parcelas)
 
-from pybrcode import generate_simple_pix
+from pybrcode.pix import generate_simple_pix
 
 def gerar_payload_pix(chave_pix, valor, nome="Natal da Familia", cidade="SAO PAULO", txid=None):
     """
