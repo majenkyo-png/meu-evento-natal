@@ -430,7 +430,7 @@ def pagar_parcela(parcela_id):
     participante = parcela.familiar if parcela.familiar else current_user
     
     form = PagamentoForm()
-    chave_pix = "majenkyo@gmail.com"  # Sua chave PIX
+    chave_pix = "48204922841"  # Sua chave PIX
     
     # Define o nome que aparece no PIX (limita a 25 caracteres)
     nome_pix = participante.nome[:25]
@@ -475,7 +475,7 @@ def gerar_qr_parcela(parcela_id):
     if parcela.usuario_id != current_user.id:
         return "Acesso negado", 403
     
-    chave_pix = "majenkyo@gmail.com"  # ALTERE PARA SUA CHAVE PIX
+    chave_pix = "48204922841"  # ALTERE PARA SUA CHAVE PIX
     
     if parcela.familiar:
         nome_pix = parcela.familiar.nome[:25]
@@ -495,7 +495,7 @@ def obter_payload_parcela(parcela_id):
     parcela = Parcela.query.get_or_404(parcela_id)
     if parcela.usuario_id != current_user.id:
         return "Acesso negado", 403
-    chave_pix = "majenkyo@gmail.com"
+    chave_pix = "48204922841"
     payload = gerar_payload_pix(chave_pix, parcela.valor)
     return payload, 200, {'Content-Type': 'text/plain'}
 
@@ -790,11 +790,11 @@ def nova_foto():
     return render_template('admin_foto_form.html', form=form)
 
 # ===== BLOCO TEMPORÁRIO PARA RECRIAR O BANCO =====
-# with app.app_context():
-#    print("=== RECRIANDO BANCO DE DADOS ===")
-#    # db.drop_all()      # <-- NUNCA DEIXE ISSO ATIVO EM PRODUÇÃO
-#    db.create_all()    
-#    print("=== BANCO RECRIADO COM SUCESSO ===")
+# ATIVE ESTE BLOCO APENAS UMA VEZ PARA CRIAR AS TABELAS
+with app.app_context():
+    print("=== RECRIANDO BANCO DE DADOS ===")
+    db.create_all()    
+    print("=== BANCO RECRIADO COM SUCESSO ===")
 # ===============================================
 if __name__ == '__main__':
     app.run(debug=True)
