@@ -217,14 +217,13 @@ def minhas_parcelas():
 
 from pybrcode.pix import generate_simple_pix
 
-def gerar_payload_pix(chave_pix, valor, nome="Natal da Familia", cidade="SAO PAULO", txid=None):
-    payload = generate_simple_pix(
+def gerar_payload_pix(chave_pix, valor):
+    return generate_simple_pix(
         key=chave_pix,
-        name=nome[:25],
-        city=cidade[:15],
-        amount=valor
+        amount=valor,
+        name="Natal da Familia",
+        city="SAO PAULO"
     )
-    return payload
 
 @app.route('/pagar_parcela/<int:parcela_id>', methods=['GET', 'POST'])
 @login_required
