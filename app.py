@@ -26,14 +26,6 @@ os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
 db.init_app(app)
 
-# ===== BLOCO TEMPORÁRIO PARA RECRIAR O BANCO =====
-with app.app_context():
-    print("=== DELETANDO BANCO ANTIGO ===")
-    db.drop_all()
-    print("=== RECRIANDO BANCO COM ESTRUTURA CORRETA ===")
-    db.create_all()
-    print("=== BANCO RECRIADO COM SUCESSO ===")
-# ===============================================
 
 # --- Configuração de e-mail ---
 EMAIL_NOTIFICACOES = True
@@ -245,7 +237,7 @@ def index():
     entradas = db.session.query(db.func.sum(Movimentacao.valor)).filter_by(tipo='entrada').scalar() or 0
     saidas = db.session.query(db.func.sum(Movimentacao.valor)).filter_by(tipo='saida').scalar() or 0
     saldo = entradas - saidas
-    valor_chacara = 500.00
+    valor_chacara = 3500.00
     meta_chacara = 1050.00
     total_arrecadado = entradas
     percentual_meta = min(100, (total_arrecadado / meta_chacara) * 100) if meta_chacara > 0 else 0
@@ -790,4 +782,7 @@ def nova_foto():
     return render_template('admin_foto_form.html', form=form)
 
 if __name__ == '__main__':
+    with app.app_context():
+        db.create_all() # Cria as tabelas apenas se elas não existirem
+        inicializar_dados() # Chama sua função de sementes (café, almoço, etc)
     app.run(debug=True)
