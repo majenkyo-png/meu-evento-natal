@@ -27,9 +27,11 @@ os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 db.init_app(app)
 
 # ===== BLOCO TEMPORÁRIO PARA RECRIAR O BANCO =====
-# Isso vai deletar TODOS os dados existentes e recriar as tabelas
 with app.app_context():
-    db.create_all()    # Recria todas as tabelas com a estrutura correta
+    print("=== DELETANDO BANCO ANTIGO ===")
+    db.drop_all()
+    print("=== RECRIANDO BANCO COM ESTRUTURA CORRETA ===")
+    db.create_all()
     print("=== BANCO RECRIADO COM SUCESSO ===")
 # ===============================================
 
