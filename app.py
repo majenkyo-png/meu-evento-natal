@@ -89,13 +89,15 @@ def inicializar_dados():
             db.session.add(inicial)
             db.session.commit()
 
-# --- Função PIX (sem txid) ---
+from pybrcode.pix import generate_simple_pix
+
 def gerar_payload_pix(chave_pix, valor):
+    # Gera o payload usando a biblioteca pybrcode com a assinatura correta
     return generate_simple_pix(
-        key=chave_pix,
-        amount=valor,
-        name="Natal da Familia",
-        city="SAO PAULO"
+        fullname="Natal da Familia",   # Nome do recebedor (parâmetro correto)
+        key=chave_pix,                 # Chave Pix
+        city="SAO PAULO",              # Cidade
+        value=valor                    # Valor da transação (parâmetro correto)
     )
 
 # --- Rotas de autenticação ---
