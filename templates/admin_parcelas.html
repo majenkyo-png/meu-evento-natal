@@ -3,48 +3,45 @@
 <h2>Gerenciar Pagamentos</h2>
 <table class="table table-striped">
     <thead>
-        <tr><th>Usuário/Familiar</th><th>Parcela</th><th>Valor</th><th>Status</th><th>Comprovante</th><th>Ações</th></tr>
+        <tr>
+            <th>Usuário/Familiar</th>
+            <th>Parcela</th>
+            <th>Valor</th>
+            <th>Status</th>
+            <th>Comprovante</th>
+            <th>Ações</th>
+        </tr>
     </thead>
     <tbody>
-    {% for p in parcelas %}
-    <tr>
-        <td>
-            {% if p.familiar %}
-                {{ p.familiar.nome }} (dependente de {{ p.usuario.nome }})
-            {% else %}
-                {{ p.usuario.nome }}
-            {% endif %}
-        </td>
-        <td>{{ p.numero }}/9</td
-        <td>R$ {{ "%.2f"|format(p.valor) }}</td
-        <td>
-            {% if p.status == 'confirmado' %}
-                <span class="badge bg-success">✅ Confirmado</span>
-            {% elif p.status == 'pago' %}
-                <span class="badge bg-warning">⏳ Aguardando confirmação</span>
-            {% else %}
-                <span class="badge bg-danger">🔴 Pendente</span>
-            {% endif %}
-         </td
-        <td>
-            {% if p.comprovante_path %}
-                <a href="{{ url_for('static', filename=p.comprovante_path) }}" target="_blank" class="btn btn-sm btn-info">Ver</a>
-            {% else %}
-                <span class="text-muted">--</span>
-            {% endif %}
-         </td
-        <td>
-            {% if p.status == 'pago' %}
-                <a href="{{ url_for('confirmar_parcela', id=p.id) }}" class="btn btn-sm btn-success">Confirmar</a>
-                <a href="{{ url_for('rejeitar_parcela', id=p.id) }}" class="btn btn-sm btn-danger">Rejeitar</a>
-            {% elif p.status == 'pendente' and p.valor > 0 %}
-                <span class="text-muted">Aguardando pagamento</span>
-            {% elif p.status == 'confirmado' %}
-                <span class="text-success">Já confirmado</span>
-            {% endif %}
-         </td
-     </tr
-    {% endfor %}
+        {% for parcela in parcelas %}
+        <tr>
+            <td>{{ parcela.familiar.nome if parcela.familiar else parcela.usuario.nome }}</td>
+            <td>{{ parcela.numero }}/9</td>
+            <td>R$ {{ "%.2f"|format(parcela.valor) }}</td>
+            <td>
+                {% if parcela.status == 'confirmado' %}
+                    <span class="badge bg-success">Confirmado</span>
+                {% elif parcela.status == 'pago' %}
+                    <span class="badge bg-warning text-dark">Aguardando Confirmação</span>
+                {% else %}
+                    <span class="badge bg-danger">Pendente</span>
+                {% endif %}
+            </td>
+            <td>
+                {% if parcela.comprovante_path %}
+                    <a href="{{ url_for('static', filename=parcela.comprovante_path) }}" target="_blank">Ver Comprovante</a>
+                {% else %}
+                    -
+                {% endif %}
+            </td>
+            <td>
+                {% if parcela.status == 'pago' %}
+                    <a href="{{ url_for('confirmar_parcela', id=parcela.id) }}" class="btn btn-sm btn-success">Confirmar</a>
+                    <a href="{{ url_for('rejeitar_parcela', id=parcela.id) }}" class="btn btn-sm btn-danger">Rejeitar</a>
+                {% endif %}
+            </td>
+        </tr>
+        {% endfor %}
     </tbody>
 </table>
 {% endblock %}

@@ -13,6 +13,7 @@ from email.message import EmailMessage
 from models import db, Usuario, DiaEvento, Refeicao, Movimentacao, ItemCompra, Parcela, Foto, Familiar
 from forms import MovimentacaoForm, ItemCompraForm, RefeicaoForm, LoginForm, PagamentoForm, FotoForm, FamiliarForm
 from utils import gerar_csv_extrato
+import unicodedata
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'troque-esta-chave-por-uma-segura'
@@ -78,7 +79,6 @@ def before_request():
 
 def inicializar_dados():
     with app.app_context():
-        db.drop_all()  # <--- ISSO DELETA TODAS AS TABELAS
         db.create_all()  # <--- ISSO RECRIA AS TABELAS
         ano_atual = date.today().year
         dias = [date(ano_atual, 12, 24), date(ano_atual, 12, 25),
@@ -112,43 +112,41 @@ def crc16(payload):
             crc &= 0xFFFF
     return f"{crc:04X}"
 
+def remover_acentos(texto):
+    # Remove acentos e caracteres especiais que quebram o código PIX
+    if not texto: return ""
+    return unicodedata.normalize('NFKD', str(texto)).encode('ASCII', 'ignore').decode('ASCII')
+
 def gerar_payload_pix(chave_pix, valor, nome_recebedor="Natal da Familia", cidade="SAO PAULO"):
-    """
-    Gera o payload PIX (Copia e Cola) manualmente.
-    Funciona para qualquer valor e qualquer nome.
-    """
-    txid = "***"  # Deixe "***" para o banco gerar o ID
-    
-    # Formata o valor com 2 casas decimais
+    """Gera o payload PIX (Copia e Cola) com tratamento para acentos."""
+    txid = "***"
     valor_str = f"{valor:.2f}"
     
-    # Função auxiliar para o formato TLV (Tag-Length-Value) do padrão EMV
     def tlv(id_tag, valor_tag):
-        return f"{id_tag}{len(valor_tag):02d}{valor_tag}"
+        return f"{id_tag}{len(str(valor_tag)):02d}{valor_tag}"
     
-    # Bloco 26: Informações da conta (GUI + Chave)
+    # Limpando nomes e cidades para evitar a quebra do CRC16
+    nome_limpo = remover_acentos(nome_recebedor)[:25].strip()
+    cidade_limpa = remover_acentos(cidade)[:15].strip()
+    
     gui = tlv("00", "br.gov.bcb.pix")
     key = tlv("01", chave_pix)
     merchant_account = tlv("26", gui + key)
     
-    # Bloco 62: Dados adicionais (TXID)
     add_data = tlv("62", tlv("05", txid))
     
-    # Monta o Payload principal
     payload = (
-        tlv("00", "01") +             # Formato do Payload
-        merchant_account +            # Dados da Conta/Chave
-        tlv("52", "0000") +           # Categoria do Comerciante
-        tlv("53", "986") +            # Moeda (986 = BRL)
-        tlv("54", valor_str) +        # Valor
-        tlv("58", "BR") +             # País
-        tlv("59", nome_recebedor[:25]) +   # Nome (max 25 caracteres)
-        tlv("60", cidade[:15]) +           # Cidade (max 15 caracteres)
-        add_data +                    # TXID
-        "6304"                        # Tag final do CRC16
+        tlv("00", "01") +
+        merchant_account +
+        tlv("52", "0000") +
+        tlv("53", "986") +
+        tlv("54", valor_str) +
+        tlv("58", "BR") +
+        tlv("59", nome_limpo) +
+        tlv("60", cidade_limpa) +
+        add_data +
+        "6304"
     )
-    
-    # Retorna o payload final com o CRC16 calculado
     return payload + crc16(payload)
 
 def criar_parcelas_para_pessoa(usuario_id, familiar_id, idade, nome_pessoa):
@@ -360,7 +358,7 @@ def listar_participantes():
     # Adiciona o próprio usuário (responsável)
     participantes.append({
         'nome': current_user.nome,
-        'idade': 30,  # idade padrão para responsável (maior que 10)
+        'idade': current_user.idade if hasattr(current_user, 'idade') and current_user.idade else 30,
         'tipo': 'responsavel',
         'valor_parcela': 50.00,
         'pagou_alguma': any(p.status == 'confirmado' for p in current_user.parcelas if p.familiar_id is None)
@@ -785,9 +783,12 @@ def nova_foto():
         return redirect(url_for('fotos'))
     return render_template('admin_foto_form.html', form=form)
 
-with app.app_context():
-        db.create_all()
-        inicializar_dados()
-
+# ===== BLOCO TEMPORÁRIO PARA RECRIAR O BANCO =====
+# with app.app_context():
+#    print("=== RECRIANDO BANCO DE DADOS ===")
+#    # db.drop_all()      # <-- NUNCA DEIXE ISSO ATIVO EM PRODUÇÃO
+#    db.create_all()    
+#    print("=== BANCO RECRIADO COM SUCESSO ===")
+# ===============================================
 if __name__ == '__main__':
     app.run(debug=True)
