@@ -12,7 +12,8 @@ from email.message import EmailMessage
 from models import db, Usuario, DiaEvento, Refeicao, Movimentacao, ItemCompra, Parcela, Foto
 from forms import MovimentacaoForm, ItemCompraForm, RefeicaoForm, LoginForm, PagamentoForm, FotoForm
 from utils import gerar_csv_extrato
-import binascii  # <--- Adicione essa linha no topo do arquivo junto com os outros imports
+import binascii
+from pybrcode.pix import generate_simple_pix
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'troque-esta-chave-por-uma-segura'
@@ -25,7 +26,7 @@ os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
 db.init_app(app)
 
-# --- Configuração de e-mail (altere para seus dados) ---
+# --- Configuração de e-mail ---
 EMAIL_NOTIFICACOES = True
 EMAIL_SMTP_SERVER = "smtp.gmail.com"
 EMAIL_SMTP_PORT = 465
@@ -59,7 +60,6 @@ login_manager.login_message = 'Faça login para acessar o sistema.'
 def load_user(user_id):
     return Usuario.query.get(int(user_id))
 
-# --- Proteção global ---
 @app.before_request
 def before_request():
     rotas_publicas = ['login', 'cadastro', 'static']
@@ -68,7 +68,6 @@ def before_request():
     if not current_user.is_authenticated:
         return redirect(url_for('login'))
 
-# --- Inicializar dados ---
 def inicializar_dados():
     with app.app_context():
         ano_atual = date.today().year
@@ -90,7 +89,16 @@ def inicializar_dados():
             db.session.add(inicial)
             db.session.commit()
 
-# --- Rotas públicas (login e cadastro) ---
+# --- Função PIX (sem txid) ---
+def gerar_payload_pix(chave_pix, valor):
+    return generate_simple_pix(
+        key=chave_pix,
+        amount=valor,
+        name="Natal da Familia",
+        city="SAO PAULO"
+    )
+
+# --- Rotas de autenticação ---
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
@@ -123,7 +131,6 @@ def cadastro():
                 flash('Primeiro usuário cadastrado como ADMINISTRADOR!', 'success')
             db.session.add(novo)
             db.session.commit()
-            # Criar 9 parcelas de R$ 50,00 cada
             valor_parcela = 50.00
             for i in range(1, 10):
                 data_venc = date(2025, i, 1) if i <= 12 else date(2026, i-12, 1)
@@ -145,7 +152,6 @@ def logout():
     logout_user()
     return redirect(url_for('login'))
 
-# --- Rotas protegidas ---
 @app.route('/')
 def index():
     entradas = db.session.query(db.func.sum(Movimentacao.valor)).filter_by(tipo='entrada').scalar() or 0
@@ -156,7 +162,6 @@ def index():
     total_arrecadado = entradas
     percentual_meta = min(100, (total_arrecadado / meta_chacara) * 100) if meta_chacara > 0 else 0
 
-    # Carrossel de fotos
     imagens_existentes = []
     fotos_dir = os.path.join('static', 'fotos_chacara')
     if os.path.exists(fotos_dir):
@@ -215,16 +220,6 @@ def minhas_parcelas():
     parcelas = Parcela.query.filter_by(usuario_id=current_user.id).order_by(Parcela.numero).all()
     return render_template('minhas_parcelas.html', parcelas=parcelas)
 
-from pybrcode.pix import generate_simple_pix
-
-def gerar_payload_pix(chave_pix, valor):
-    return generate_simple_pix(
-        key=chave_pix,
-        amount=valor,
-        name="Natal da Familia",
-        city="SAO PAULO"
-    )
-
 @app.route('/pagar_parcela/<int:parcela_id>', methods=['GET', 'POST'])
 @login_required
 def pagar_parcela(parcela_id):
@@ -234,14 +229,9 @@ def pagar_parcela(parcela_id):
         return redirect(url_for('minhas_parcelas'))
     
     form = PagamentoForm()
-    
-    # Configuração da chave PIX (SUBSTITUA PELA SUA CHAVE REAL)
-    chave_pix = "48204922841"  # ALTERE AQUI
-    
-    txid = f"PAR{parcela.id:06d}{datetime.now().strftime('%y%m%d')}"
-
+    chave_pix = "48204922841"  # ALTERE PARA SUA CHAVE PIX
     try:
-        payload = gerar_payload_pix(chave_pix, parcela.valor, txid=txid)
+        payload = gerar_payload_pix(chave_pix, parcela.valor)
     except Exception as e:
         return f"ERRO PIX: {str(e)}"
         
@@ -268,31 +258,27 @@ def pagar_parcela(parcela_id):
     return render_template('pagar_parcela.html', form=form, parcela=parcela, payload=payload)
 
 @app.route('/gerar_qr_parcela/<int:parcela_id>')
+@login_required
 def gerar_qr_parcela(parcela_id):
     parcela = Parcela.query.get_or_404(parcela_id)
     if parcela.usuario_id != current_user.id:
         return "Acesso negado", 403
-    
-    chave_pix = "48204922841"  # ALTERE AQUI
-    txid = f"PAR{parcela.id:06d}{datetime.now().strftime('%y%m%d')}"
-    payload = gerar_payload_pix(chave_pix, parcela.valor, txid=txid)
-    
+    chave_pix = "48204922841"
+    payload = gerar_payload_pix(chave_pix, parcela.valor)
     img = qrcode.make(payload)
     buf = BytesIO()
     img.save(buf, 'PNG')
     buf.seek(0)
     return send_file(buf, mimetype='image/png')
 
-# Rota adicional para retornar apenas o payload PIX (copia e cola)
 @app.route('/obter_payload_parcela/<int:parcela_id>')
 @login_required
 def obter_payload_parcela(parcela_id):
     parcela = Parcela.query.get_or_404(parcela_id)
     if parcela.usuario_id != current_user.id:
         return "Acesso negado", 403
-    chave_pix = "48204922841"  # ALTERE AQUI
-    txid = f"PAR{parcela.id:06d}{datetime.now().strftime('%y%m%d')}"
-    payload = gerar_payload_pix(chave_pix, parcela.valor, txid=txid)
+    chave_pix = "48204922841"
+    payload = gerar_payload_pix(chave_pix, parcela.valor)
     return payload, 200, {'Content-Type': 'text/plain'}
 
 # --- Pagamento com Cartão (InfinitePay) ---
@@ -387,7 +373,7 @@ def webhook_infinitepay():
 
     return {"success": True, "message": "Recebido, mas pagamento não aprovado."}, 200
 
-# --- Área administrativa (apenas admin) ---
+# --- Área administrativa ---
 def admin_required(f):
     from functools import wraps
     @wraps(f)
@@ -585,7 +571,6 @@ def nova_foto():
         return redirect(url_for('fotos'))
     return render_template('admin_foto_form.html', form=form)
 
-# --- Execução ---
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
