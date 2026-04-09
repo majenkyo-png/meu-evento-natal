@@ -13,9 +13,6 @@ from models import db, Usuario, DiaEvento, Refeicao, Movimentacao, ItemCompra, P
 from forms import MovimentacaoForm, ItemCompraForm, RefeicaoForm, LoginForm, PagamentoForm, FotoForm
 from utils import gerar_csv_extrato
 
-# Importa a biblioteca para gerar PIX oficial
-from pixqrcode import PixQrCode
-
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'troque-esta-chave-por-uma-segura'
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///evento.db'
@@ -217,27 +214,55 @@ def minhas_parcelas():
     parcelas = Parcela.query.filter_by(usuario_id=current_user.id).order_by(Parcela.numero).all()
     return render_template('minhas_parcelas.html', parcelas=parcelas)
 
-# Função auxiliar para gerar o payload PIX (código copia e cola) usando a biblioteca oficial
 def gerar_payload_pix(chave_pix, valor, nome="Natal da Familia", cidade="SAO PAULO", txid=None):
     """
-    Gera o payload PIX (BR Code) válido usando a biblioteca pixqrcode.
-    Retorna uma string pronta para ser usada no QR Code e no copia e cola.
+    Gera o payload PIX (BR Code) válido com CRC16 calculado manualmente.
+    Não requer bibliotecas externas.
     """
-    # Cria o objeto PIX com os dados obrigatórios
-    pix = PixQrCode(nome, chave_pix, cidade)
+    # Valor formatado com duas casas decimais (ex: 50.00)
+    valor_str = f"{valor:.2f}"
     
-    # Define o valor da transação (em reais, com ponto)
-    pix.valor = valor
-    
-    # Define um identificador único para a transação (opcional, mas recomendado)
+    # Identificador da transação (txid) - máximo 25 caracteres
     if txid is None:
-        pix.txid = f"EVENTO{datetime.now().strftime('%Y%m%d%H%M%S')}"
+        txid = f"EV{datetime.now().strftime('%Y%m%d%H%M%S')}"
     else:
-        pix.txid = txid
+        txid = txid[:25]
     
-    # Gera o payload completo com CRC16 válido
-    payload = pix.obter_payload()
-    return payload
+    # Monta o payload base (sem o CRC)
+    payload_base = (
+        "000201"                                    # Payload format indicator
+        "26360014BR.GOV.BCB.PIX"                   # GUI
+        f"0114{chave_pix}"                         # Chave PIX (14 indica tamanho)
+        "52040000"                                 # Merchant category code
+        "5303986"                                  # Moeda BRL
+        f"5404{valor_str.replace('.', '')}"        # Valor em centavos (ex: 5404500 para 50.00)
+        "5802BR"                                   # País
+        f"5925{nome[:25]}"                         # Nome do recebedor (max 25)
+        f"6009{cidade[:15]}"                       # Cidade (max 15)
+        f"62070503***"                             # Campo adicional reservado
+        "6304"                                     # Placeholder para CRC
+    )
+    
+    # Algoritmo CRC16 (CCITT) usado pelo BACEN
+    def calcular_crc16(payload):
+        crc = 0xFFFF
+        polinomio = 0x1021
+        for byte in payload.encode('utf-8'):
+            crc ^= (byte << 8)
+            for _ in range(8):
+                if crc & 0x8000:
+                    crc = (crc << 1) ^ polinomio
+                else:
+                    crc <<= 1
+                crc &= 0xFFFF
+        return crc
+    
+    crc = calcular_crc16(payload_base)
+    crc_hex = f"{crc:04X}"  # 4 caracteres hexa maiúsculos
+    
+    # Substitui o placeholder pelo CRC calculado
+    payload_final = payload_base[:-4] + crc_hex
+    return payload_final
 
 @app.route('/pagar_parcela/<int:parcela_id>', methods=['GET', 'POST'])
 def pagar_parcela(parcela_id):
@@ -249,7 +274,7 @@ def pagar_parcela(parcela_id):
     form = PagamentoForm()
     
     # Configuração da chave PIX (SUBSTITUA PELA SUA CHAVE REAL)
-    chave_pix = "majenkyo@gmail.com"  # ALTERE AQUI
+    chave_pix = "48204922841"  # ALTERE AQUI
     
     # Gera o payload PIX válido usando a biblioteca oficial
     txid = f"PAR{parcela.id:06d}{datetime.now().strftime('%y%m%d')}"
@@ -283,7 +308,7 @@ def gerar_qr_parcela(parcela_id):
     if parcela.usuario_id != current_user.id:
         return "Acesso negado", 403
     
-    chave_pix = "majenkyo@gmail.com"  # ALTERE AQUI
+    chave_pix = "48204922841"  # ALTERE AQUI
     txid = f"PAR{parcela.id:06d}{datetime.now().strftime('%y%m%d')}"
     payload = gerar_payload_pix(chave_pix, parcela.valor, txid=txid)
     
@@ -300,7 +325,7 @@ def obter_payload_parcela(parcela_id):
     parcela = Parcela.query.get_or_404(parcela_id)
     if parcela.usuario_id != current_user.id:
         return "Acesso negado", 403
-    chave_pix = "majenkyo@gmail.com"  # ALTERE AQUI
+    chave_pix = "48204922841"  # ALTERE AQUI
     txid = f"PAR{parcela.id:06d}{datetime.now().strftime('%y%m%d')}"
     payload = gerar_payload_pix(chave_pix, parcela.valor, txid=txid)
     return payload, 200, {'Content-Type': 'text/plain'}
