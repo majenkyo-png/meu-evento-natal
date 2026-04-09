@@ -215,20 +215,17 @@ def minhas_parcelas():
     parcelas = Parcela.query.filter_by(usuario_id=current_user.id).order_by(Parcela.numero).all()
     return render_template('minhas_parcelas.html', parcelas=parcelas)
 
-from pybrcode.pix import generate_simple_pix
+from pybrcode.pix import Pix
 
-def gerar_payload_pix(chave_pix, valor, nome="Natal da Familia", cidade="SAO PAULO", txid=None):
-    """
-    Gera o payload PIX (BR Code) válido usando a biblioteca pybrcode.
-    """
-    # Gera o payload completo com um único comando
-    payload = generate_simple_pix(
-        key=chave_pix,          # Chave PIX (e-mail, CPF, telefone, etc.)
-        name=nome,              # Nome do recebedor
-        city=cidade,            # Cidade do recebedor
-        amount=valor            # Valor da transação
-    )
-    return payload
+def gerar_payload_pix(chave_pix, valor, nome="Natal da Familia", cidade="SAO PAULO", txid="***"):
+    pix = Pix()
+    pix.set_key(chave_pix)
+    pix.set_name(nome[:25])  # limite do padrão
+    pix.set_city(cidade[:15])
+    pix.set_amount(valor)
+    pix.set_txid(txid)  # AGORA SIM vai no payload
+
+    return pix.get_payload()
 
 @app.route('/pagar_parcela/<int:parcela_id>', methods=['GET', 'POST'])
 def pagar_parcela(parcela_id):
