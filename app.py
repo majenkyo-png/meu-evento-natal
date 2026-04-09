@@ -214,55 +214,44 @@ def minhas_parcelas():
     parcelas = Parcela.query.filter_by(usuario_id=current_user.id).order_by(Parcela.numero).all()
     return render_template('minhas_parcelas.html', parcelas=parcelas)
 
+import binascii  # <--- Adicione essa linha no topo do arquivo junto com os outros imports
+
 def gerar_payload_pix(chave_pix, valor, nome="Natal da Familia", cidade="SAO PAULO", txid=None):
     """
-    Gera o payload PIX (BR Code) válido com CRC16 calculado manualmente.
-    Não requer bibliotecas externas.
+    Gera o payload PIX (BR Code) válido, seguindo as especificações do Banco Central.
     """
-    # Valor formatado com duas casas decimais (ex: 50.00)
+    # 1. Formata o valor (ex: 50.00)
     valor_str = f"{valor:.2f}"
-    
-    # Identificador da transação (txid) - máximo 25 caracteres
+    # 2. Cria um identificador único para a transação (txid)
     if txid is None:
         txid = f"EV{datetime.now().strftime('%Y%m%d%H%M%S')}"
     else:
-        txid = txid[:25]
-    
-    # Monta o payload base (sem o CRC)
+        txid = txid[:25]  # Limita a 25 caracteres
+
+    # 3. Monta o payload base (sem o CRC)
     payload_base = (
-        "000201"                                    # Payload format indicator
-        "26360014BR.GOV.BCB.PIX"                   # GUI
-        f"0114{chave_pix}"                         # Chave PIX (14 indica tamanho)
-        "52040000"                                 # Merchant category code
-        "5303986"                                  # Moeda BRL
-        f"5404{valor_str.replace('.', '')}"        # Valor em centavos (ex: 5404500 para 50.00)
-        "5802BR"                                   # País
-        f"5925{nome[:25]}"                         # Nome do recebedor (max 25)
-        f"6009{cidade[:15]}"                       # Cidade (max 15)
-        f"62070503***"                             # Campo adicional reservado
-        "6304"                                     # Placeholder para CRC
+        "000201"                                    # Payload Format Indicator (01)
+        "26360014BR.GOV.BCB.PIX"                   # GUI do Pix
+        f"0114{chave_pix}"                         # Chave Pix (com o tamanho 14)
+        "52040000"                                 # Merchant Category Code (0000)
+        "5303986"                                  # Moeda BRL (986)
+        f"5404{valor_str.replace('.', '')}"        # Valor da transação em centavos
+        "5802BR"                                   # Código do país (BR)
+        f"5925{nome[:25]}"                         # Nome do recebedor (máx 25)
+        f"6009{cidade[:15]}"                       # Cidade (máx 15)
+        "62070503***"                              # Template de dados adicionais
     )
-    
-    # Algoritmo CRC16 (CCITT) usado pelo BACEN
-    def calcular_crc16(payload):
-        crc = 0xFFFF
-        polinomio = 0x1021
-        for byte in payload.encode('utf-8'):
-            crc ^= (byte << 8)
-            for _ in range(8):
-                if crc & 0x8000:
-                    crc = (crc << 1) ^ polinomio
-                else:
-                    crc <<= 1
-                crc &= 0xFFFF
-        return crc
-    
-    crc = calcular_crc16(payload_base)
-    crc_hex = f"{crc:04X}"  # 4 caracteres hexa maiúsculos
-    
-    # Substitui o placeholder pelo CRC calculado
-    payload_final = payload_base[:-4] + crc_hex
-    return payload_final
+    # Adiciona o campo txid se ele existir
+    if txid:
+        payload_base += f"05{len(txid):02d}{txid}"
+    payload_base += "6304"  # Placeholder para o CRC
+
+    # 4. Calcula o CRC16 usando a função nativa do Python
+    crc = binascii.crc_hqx(payload_base.encode('utf-8'), 0xFFFF)
+    crc_hex = f"{crc:04X}"  # Formata como 4 caracteres hexadecimais maiúsculos
+
+    # 5. Retorna o payload final com o CRC correto
+    return payload_base[:-4] + crc_hex
 
 @app.route('/pagar_parcela/<int:parcela_id>', methods=['GET', 'POST'])
 def pagar_parcela(parcela_id):
