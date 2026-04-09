@@ -1,5 +1,24 @@
 {% extends "base.html" %}
+
 {% block content %}
+<style>
+    .table {
+        table-layout: fixed; /* Força todas as tabelas a seguirem a mesma largura de coluna */
+        width: 100%;
+    }
+    
+    /* Define larguras exatas para que as colunas de todas as tabelas fiquem iguais */
+    th:nth-child(1), td:nth-child(1) { width: 40%; } /* Nome */
+    th:nth-child(2), td:nth-child(2) { width: 15%; } /* Idade */
+    th:nth-child(3), td:nth-child(3) { width: 20%; } /* Valor */
+    th:nth-child(4), td:nth-child(4) { width: 25%; } /* Status */
+
+    td {
+        vertical-align: middle;
+        word-wrap: break-word;
+    }
+</style>
+
 <h2>📋 Lista de Participantes</h2>
 
 {% if adultos %}

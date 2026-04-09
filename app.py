@@ -425,14 +425,15 @@ def pagar_parcela(parcela_id):
         flash('Acesso negado a esta parcela.', 'danger')
         return redirect(url_for('minhas_parcelas'))
     
-    form = PagamentoForm()
-    chave_pix = "majenkyo@gmail.com"  # ALTERE PARA SUA CHAVE PIX
+    # Define quem é o "participante" para o HTML não dar erro
+    # Se a parcela tiver um familiar, o participante é o familiar; senão, é o usuário atual.
+    participante = parcela.familiar if parcela.familiar else current_user
     
-    # Define o nome que aparece no PIX (pode ser o nome do dependente)
-    if parcela.familiar:
-        nome_pix = parcela.familiar.nome[:25]  # Limita a 25 caracteres
-    else:
-        nome_pix = current_user.nome[:25]
+    form = PagamentoForm()
+    chave_pix = "majenkyo@gmail.com"  # Sua chave PIX
+    
+    # Define o nome que aparece no PIX (limita a 25 caracteres)
+    nome_pix = participante.nome[:25]
     
     try:
         payload = gerar_payload_pix(chave_pix, parcela.valor, nome_recebedor=nome_pix)
@@ -447,20 +448,25 @@ def pagar_parcela(parcela_id):
             filepath = os.path.join(app.config['UPLOAD_FOLDER'], nome_unic)
             f.save(filepath)
             parcela.comprovante_path = f"uploads/{nome_unic}"
+        
         parcela.status = 'pago'
         parcela.data_pagamento = date.today()
         parcela.observacao = form.observacao.data
         db.session.commit()
         
-        nome_pessoa = parcela.familiar.nome if parcela.familiar else current_user.nome
         assunto = f"Novo comprovante de pagamento PIX - Parcela {parcela.numero}"
-        mensagem = f"Olá! {nome_pessoa} enviou comprovante da parcela {parcela.numero} (R$ {parcela.valor:.2f}).\nAcesse o admin para confirmar."
+        mensagem = f"Olá! {participante.nome} enviou comprovante da parcela {parcela.numero} (R$ {parcela.valor:.2f}).\nAcesse o admin para confirmar."
         enviar_email_notificacao(assunto, mensagem)
         
         flash('Comprovante enviado! Aguarde confirmação do organizador.', 'success')
         return redirect(url_for('minhas_parcelas'))
     
-    return render_template('pagar_parcela.html', form=form, parcela=parcela, payload=payload)
+    # AGORA PASSANDO 'participante' PARA O HTML
+    return render_template('pagar_parcela.html', 
+                           form=form, 
+                           parcela=parcela, 
+                           payload=payload, 
+                           participante=participante)
 
 @app.route('/gerar_qr_parcela/<int:parcela_id>')
 @login_required
