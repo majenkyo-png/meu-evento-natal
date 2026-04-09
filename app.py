@@ -90,8 +90,8 @@ def inicializar_dados():
             db.session.add(inicial)
             db.session.commit()
 
-# ================= FUNÇÕES PIX =================
 def crc16(payload):
+    """Calcula o CRC16 padrão do PIX (CCITT-FALSE)."""
     crc = 0xFFFF
     for char in payload:
         crc ^= ord(char) << 8
@@ -103,36 +103,59 @@ def crc16(payload):
             crc &= 0xFFFF
     return f"{crc:04X}"
 
-def gerar_payload_pix(chave_pix, valor, nome_recebedor="Natal da Familia", cidade="SAO PAULO", txid="***"):
+def gerar_payload_pix(chave_pix, valor, nome_recebedor="Natal da Familia", cidade="SAO PAULO"):
+    """
+    Gera o payload PIX (Copia e Cola) manualmente.
+    Funciona para qualquer valor e qualquer nome.
+    """
+    txid = "***"  # Deixe "***" para o banco gerar o ID
+    
+    # Formata o valor com 2 casas decimais
     valor_str = f"{valor:.2f}"
+    
+    # Função auxiliar para o formato TLV (Tag-Length-Value) do padrão EMV
     def tlv(id_tag, valor_tag):
         return f"{id_tag}{len(valor_tag):02d}{valor_tag}"
+    
+    # Bloco 26: Informações da conta (GUI + Chave)
     gui = tlv("00", "br.gov.bcb.pix")
     key = tlv("01", chave_pix)
     merchant_account = tlv("26", gui + key)
+    
+    # Bloco 62: Dados adicionais (TXID)
     add_data = tlv("62", tlv("05", txid))
+    
+    # Monta o Payload principal
     payload = (
-        tlv("00", "01") +
-        merchant_account +
-        tlv("52", "0000") +
-        tlv("53", "986") +
-        tlv("54", valor_str) +
-        tlv("58", "BR") +
-        tlv("59", nome_recebedor[:25]) +
-        tlv("60", cidade[:15]) +
-        add_data +
-        "6304"
+        tlv("00", "01") +             # Formato do Payload
+        merchant_account +            # Dados da Conta/Chave
+        tlv("52", "0000") +           # Categoria do Comerciante
+        tlv("53", "986") +            # Moeda (986 = BRL)
+        tlv("54", valor_str) +        # Valor
+        tlv("58", "BR") +             # País
+        tlv("59", nome_recebedor[:25]) +   # Nome (max 25 caracteres)
+        tlv("60", cidade[:15]) +           # Cidade (max 15 caracteres)
+        add_data +                    # TXID
+        "6304"                        # Tag final do CRC16
     )
+    
+    # Retorna o payload final com o CRC16 calculado
     return payload + crc16(payload)
-# ===============================================
 
-# ========== FUNÇÃO AUXILIAR PARA CRIAR PARCELAS ==========
 def criar_parcelas_para_pessoa(usuario_id, familiar_id, idade, nome_pessoa):
-    """Cria 9 parcelas com valor baseado na idade:
-       - 6 a 10 anos: R$ 25 (meia)
-       - Maior que 10 anos: R$ 50 (inteira)
-       - Menor que 6 anos: R$ 0 (não paga, mas registra)
-    """
+    """Cria 9 parcelas SOMENTE SE NÃO EXISTIREM parcelas para esta pessoa"""
+    
+    # Verificar se já existem parcelas (evitar duplicação)
+    if familiar_id:
+        existentes = Parcela.query.filter_by(familiar_id=familiar_id).count()
+    else:
+        existentes = Parcela.query.filter_by(usuario_id=usuario_id, familiar_id=None).count()
+    
+    if existentes > 0:
+        print(f"Parcelas já existem para {nome_pessoa}. Pulando criação.")
+        return
+    
+    # Definir valor baseado na idade
     if idade >= 6 and idade <= 10:
         valor_parcela = 25.00
         tipo = "meia"
@@ -143,7 +166,6 @@ def criar_parcelas_para_pessoa(usuario_id, familiar_id, idade, nome_pessoa):
         valor_parcela = 0.00
         tipo = "gratuito"
     
-    # Se for gratuito (menor que 6 anos), já marca como confirmado
     status_inicial = "confirmado" if valor_parcela == 0 else "pendente"
     
     for i in range(1, 10):
@@ -154,11 +176,11 @@ def criar_parcelas_para_pessoa(usuario_id, familiar_id, idade, nome_pessoa):
             numero=i,
             valor=valor_parcela,
             data_vencimento=data_venc,
-            status=status_inicial,
-            observacao=f"{tipo} - {nome_pessoa}" if valor_parcela == 0 else None
+            status=status_inicial
         )
         db.session.add(parcela)
     db.session.commit()
+    print(f"✅ {existentes} parcelas criadas para {nome_pessoa} - {tipo} (R$ {valor_parcela})")
 # ========================================================
 
 # --- Rotas de autenticação ---
@@ -391,7 +413,7 @@ def minhas_parcelas():
 def pagar_parcela(parcela_id):
     parcela = Parcela.query.get_or_404(parcela_id)
     
-    # Verificar se o usuário tem permissão
+    # Verificar permissão
     if parcela.usuario_id != current_user.id:
         flash('Acesso negado a esta parcela.', 'danger')
         return redirect(url_for('minhas_parcelas'))
@@ -399,8 +421,14 @@ def pagar_parcela(parcela_id):
     form = PagamentoForm()
     chave_pix = "majenkyo@gmail.com"  # ALTERE PARA SUA CHAVE PIX
     
+    # Define o nome que aparece no PIX (pode ser o nome do dependente)
+    if parcela.familiar:
+        nome_pix = parcela.familiar.nome[:25]  # Limita a 25 caracteres
+    else:
+        nome_pix = current_user.nome[:25]
+    
     try:
-        payload = gerar_payload_pix(chave_pix, parcela.valor)
+        payload = gerar_payload_pix(chave_pix, parcela.valor, nome_recebedor=nome_pix)
     except Exception as e:
         return f"ERRO PIX: {str(e)}"
         
@@ -433,8 +461,15 @@ def gerar_qr_parcela(parcela_id):
     parcela = Parcela.query.get_or_404(parcela_id)
     if parcela.usuario_id != current_user.id:
         return "Acesso negado", 403
-    chave_pix = "majenkyo@gmail.com"
-    payload = gerar_payload_pix(chave_pix, parcela.valor)
+    
+    chave_pix = "majenkyo@gmail.com"  # ALTERE PARA SUA CHAVE PIX
+    
+    if parcela.familiar:
+        nome_pix = parcela.familiar.nome[:25]
+    else:
+        nome_pix = current_user.nome[:25]
+    
+    payload = gerar_payload_pix(chave_pix, parcela.valor, nome_recebedor=nome_pix)
     img = qrcode.make(payload)
     buf = BytesIO()
     img.save(buf, 'PNG')

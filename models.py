@@ -10,9 +10,9 @@ class Usuario(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     nome = db.Column(db.String(100), nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
-    idade = db.Column(db.Integer, nullable=True)  # NOVO CAMPO
     senha_hash = db.Column(db.String(200), nullable=False)
     telefone = db.Column(db.String(20))
+    idade = db.Column(db.Integer, nullable=True)
     data_cadastro = db.Column(db.DateTime, default=datetime.utcnow)
     is_admin = db.Column(db.Boolean, default=False)
     parcelas = db.relationship('Parcela', backref='usuario', lazy=True)
@@ -61,7 +61,7 @@ class Familiar(db.Model):
     nome = db.Column(db.String(100), nullable=False)
     idade = db.Column(db.Integer, nullable=False)
     data_cadastro = db.Column(db.DateTime, default=datetime.utcnow)
-    parcelas = db.relationship('Parcela', backref='familiar', lazy=True)
+    parcelas = db.relationship('Parcela', backref='familiar', lazy=True, cascade='all, delete-orphan')
 
 class Parcela(db.Model):
     __tablename__ = 'parcelas'
