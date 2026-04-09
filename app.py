@@ -789,12 +789,5 @@ def nova_foto():
         return redirect(url_for('fotos'))
     return render_template('admin_foto_form.html', form=form)
 
-# ===== BLOCO TEMPORÁRIO PARA RECRIAR O BANCO =====
-# ATIVE ESTE BLOCO APENAS UMA VEZ PARA CRIAR AS TABELAS
-with app.app_context():
-    print("=== RECRIANDO BANCO DE DADOS ===")
-    db.create_all()    
-    print("=== BANCO RECRIADO COM SUCESSO ===")
-# ===============================================
 if __name__ == '__main__':
     app.run(debug=True)
