@@ -215,19 +215,19 @@ def minhas_parcelas():
     parcelas = Parcela.query.filter_by(usuario_id=current_user.id).order_by(Parcela.numero).all()
     return render_template('minhas_parcelas.html', parcelas=parcelas)
 
-from pybrcode.pix import Pix
+from pybrcode.pix import generate_simple_pix
 
-def gerar_payload_pix(chave_pix, valor, nome="Natal da Familia", cidade="SAO PAULO", txid="***"):
-    pix = Pix()
-    pix.set_key(chave_pix)
-    pix.set_name(nome[:25])  # limite do padrão
-    pix.set_city(cidade[:15])
-    pix.set_amount(valor)
-    pix.set_txid(txid)  # AGORA SIM vai no payload
-
-    return pix.get_payload()
+def gerar_payload_pix(chave_pix, valor, nome="Natal da Familia", cidade="SAO PAULO", txid=None):
+    payload = generate_simple_pix(
+        key=chave_pix,
+        name=nome[:25],
+        city=cidade[:15],
+        amount=valor
+    )
+    return payload
 
 @app.route('/pagar_parcela/<int:parcela_id>', methods=['GET', 'POST'])
+@login_required
 def pagar_parcela(parcela_id):
     parcela = Parcela.query.get_or_404(parcela_id)
     if parcela.usuario_id != current_user.id:
@@ -239,10 +239,13 @@ def pagar_parcela(parcela_id):
     # Configuração da chave PIX (SUBSTITUA PELA SUA CHAVE REAL)
     chave_pix = "48204922841"  # ALTERE AQUI
     
-    # Gera o payload PIX válido usando a biblioteca oficial
     txid = f"PAR{parcela.id:06d}{datetime.now().strftime('%y%m%d')}"
-    payload = gerar_payload_pix(chave_pix, parcela.valor, txid=txid)
-    
+
+    try:
+        payload = gerar_payload_pix(chave_pix, parcela.valor, txid=txid)
+    except Exception as e:
+        return f"ERRO PIX: {str(e)}"
+        
     if form.validate_on_submit():
         if form.comprovante.data:
             f = form.comprovante.data
