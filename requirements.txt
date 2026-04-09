@@ -8,3 +8,4 @@ Pillow
 gunicorn==20.1.0
 setuptools==70.0.0
 requests==2.31.0
+pybrcode
